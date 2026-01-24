@@ -8,7 +8,6 @@ import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-import jakarta.annotation.Generated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,7 +17,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -39,12 +37,47 @@ public class Complaint {
     private String description;
     private String location;
 
+    // ===== CATEGORY & ROUTING (AI decides, SLA provides defaults) =====
+    
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    @JsonIgnore
+    @ManyToOne
+    @JoinColumn(name = "category_id", insertable = false, updatable = false)
+    private Category category;
+
+    @Column(name = "department_id")
+    private Long departmentId;
+
+    @JsonIgnore
+    @ManyToOne
+    @JoinColumn(name = "department_id", insertable = false, updatable = false)
+    private Department department;
+
+    // ===== PRIORITY & SLA (AI has FULL control) =====
+    
+    @Enumerated(EnumType.STRING)
+    private Priority priority;
+    private LocalDateTime slaDeadline;  // AI can shorten this for urgency!
+    private Integer slaDaysAssigned;  // What AI actually assigned (may differ from SLA default)
+
+    @Column(columnDefinition = "INT DEFAULT 0")
+    private Integer escalationLevel = 0;
+    
     @Enumerated(EnumType.STRING)
     private ComplaintStatus status;
 
-    @Enumerated(EnumType.STRING)
-    private Priority priority;
+    @CreationTimestamp
+    private LocalDateTime createdTime;
 
+    private LocalDateTime startTime;
+    private LocalDateTime updatedTime;
+    private LocalDateTime resolvedTime;
+    private LocalDateTime closedTime;
+
+    // ===== ASSIGNMENT =====
+    
     @Column(name = "citizen_id")
     private Long citizenId;
 
@@ -61,21 +94,13 @@ public class Complaint {
     @JoinColumn(name = "staff_id", insertable = false, updatable = false)
     private User staff;
 
-    @Column(name = "department_id")
-    private Long departmentId;
+    // ===== AI TRANSPARENCY =====
+    
+    @Column(columnDefinition = "TEXT")
+    private String aiReasoning;
 
-    @JsonIgnore
-    @ManyToOne
-    @JoinColumn(name = "department_id", insertable = false, updatable = false)
-    private Department department;
-
-    @CreationTimestamp
-    private LocalDateTime createdTime;
-
-    private LocalDateTime startTime;
-    private LocalDateTime updatedTime;
-    private LocalDateTime resolvedTime;
-    private LocalDateTime closedTime;
-
+    @Column(columnDefinition = "DECIMAL(3,2)")
+    private Double aiConfidence;
+    
     private Integer citizenSatisfaction;
 }

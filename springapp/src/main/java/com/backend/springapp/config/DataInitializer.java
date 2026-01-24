@@ -4,16 +4,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import com.backend.springapp.enums.Priority;
 import com.backend.springapp.enums.UserType;
+import com.backend.springapp.model.Category;
 import com.backend.springapp.model.Department;
+import com.backend.springapp.model.SLA;
 import com.backend.springapp.model.User;
+import com.backend.springapp.repository.CategoryRepository;
 import com.backend.springapp.repository.DepartmentRepository;
+import com.backend.springapp.repository.SLARepository;
 import com.backend.springapp.repository.UserRepository;
 
 /**
  * Pre-populates the database with initial data on application startup.
- * Departments are seeded with fixed IDs for consistency.
- * Sample staff and department heads are created for testing.
+ * 
+ * Initialization order matters:
+ * 1. Departments (organizational structure)
+ * 2. Categories (complaint types with AI keywords)
+ * 3. SLA Configs (links Category → Department + SLA rules)
+ * 4. Sample Staff (for testing)
  */
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -24,11 +33,19 @@ public class DataInitializer implements CommandLineRunner {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private SLARepository slaRepository;
+
     private static final String DEFAULT_PASSWORD = "argusargus";
 
     @Override
     public void run(String... args) throws Exception {
         initializeDepartments();
+        initializeCategories();
+        initializeSLAConfigs();
         initializeSampleStaff();
     }
 
@@ -41,6 +58,8 @@ public class DataInitializer implements CommandLineRunner {
      * 4 - SEWERAGE
      * 5 - SANITATION
      * 6 - TRAFFIC
+     * 7 - PARKS
+     * 8 - ADMIN
      */
     private void initializeDepartments() {
         if (departmentRepository.count() == 0) {
@@ -50,8 +69,119 @@ public class DataInitializer implements CommandLineRunner {
             departmentRepository.save(new Department(4L, "SEWERAGE", null));
             departmentRepository.save(new Department(5L, "SANITATION", null));
             departmentRepository.save(new Department(6L, "TRAFFIC", null));
+            departmentRepository.save(new Department(7L, "PARKS", null));
+            departmentRepository.save(new Department(8L, "ADMIN", null));
             
             System.out.println("✓ Departments initialized successfully");
+        }
+    }
+
+    /**
+     * Initialize complaint categories with AI-friendly keywords.
+     * Keywords help AI classify citizen complaints into correct categories.
+     * 
+     * Categories can be added/modified via admin UI later.
+     * AI can also suggest new categories for admin approval.
+     */
+    private void initializeCategories() {
+        if (categoryRepository.count() == 0) {
+            categoryRepository.save(new Category(
+                "POTHOLE", 
+                "Road surface damage and potholes",
+                "pothole,road damage,crater,hole in road,broken road,road repair"
+            ));
+            categoryRepository.save(new Category(
+                "STREETLIGHT", 
+                "Non-functional or damaged street lights",
+                "streetlight,street lamp,light not working,dark street,broken light,lamp post"
+            ));
+            categoryRepository.save(new Category(
+                "WATER_SHORTAGE", 
+                "Water supply issues and shortages",
+                "no water,water shortage,low pressure,water supply,tap not working,dry tap"
+            ));
+            categoryRepository.save(new Category(
+                "SEWER_DRAINAGE", 
+                "Sewerage and drainage problems",
+                "sewer,drainage,blocked drain,overflow,sewage,gutter,clogged,flooding"
+            ));
+            categoryRepository.save(new Category(
+                "GARBAGE", 
+                "Garbage collection and waste management",
+                "garbage,trash,waste,litter,not collected,dump,rubbish,debris"
+            ));
+            categoryRepository.save(new Category(
+                "TRAFFIC_SIGNALS", 
+                "Traffic signal malfunctions",
+                "traffic light,signal,red light,not working,traffic jam,broken signal"
+            ));
+            categoryRepository.save(new Category(
+                "PARK_MAINTENANCE", 
+                "Public park and garden maintenance",
+                "park,garden,playground,bench,grass,tree,public space,maintenance"
+            ));
+            categoryRepository.save(new Category(
+                "ELECTRICAL_DAMAGE", 
+                "Dangerous electrical hazards (HIGH PRIORITY)",
+                "electric,wire,shock,sparks,transformer,cable,dangerous,hazard,exposed wire"
+            ));
+            categoryRepository.save(new Category(
+                "OTHER", 
+                "General complaints not fitting other categories",
+                "other,general,miscellaneous,complaint"
+            ));
+
+            System.out.println("✓ Categories initialized successfully");
+        }
+    }
+
+    /**
+     * Initialize SLA configurations for each category.
+     * Maps Category → Department, SLA Days, Base Priority
+     * 
+     * This is the "rulebook" - AI determines category, then system
+     * uses this config to set department, deadline, and base priority.
+     * 
+     * Escalation is handled at service level with fixed intervals:
+     * - Level 1: SLA + 1 day overdue (notify supervisor, priority → HIGH)
+     * - Level 2: SLA + 3 days overdue (notify dept head, priority → HIGH)  
+     * - Level 3: SLA + 5 days overdue (notify commissioner, priority → CRITICAL)
+     */
+    private void initializeSLAConfigs() {
+        if (slaRepository.count() == 0) {
+            // Fetch departments
+            Department roads = departmentRepository.findById(1L).orElseThrow();
+            Department electrical = departmentRepository.findById(2L).orElseThrow();
+            Department waterSupply = departmentRepository.findById(3L).orElseThrow();
+            Department sewerage = departmentRepository.findById(4L).orElseThrow();
+            Department sanitation = departmentRepository.findById(5L).orElseThrow();
+            Department traffic = departmentRepository.findById(6L).orElseThrow();
+            Department parks = departmentRepository.findById(7L).orElseThrow();
+            Department admin = departmentRepository.findById(8L).orElseThrow();
+
+            // Fetch categories
+            Category pothole = categoryRepository.findByName("POTHOLE").orElseThrow();
+            Category streetlight = categoryRepository.findByName("STREETLIGHT").orElseThrow();
+            Category waterShortage = categoryRepository.findByName("WATER_SHORTAGE").orElseThrow();
+            Category sewerDrainage = categoryRepository.findByName("SEWER_DRAINAGE").orElseThrow();
+            Category garbage = categoryRepository.findByName("GARBAGE").orElseThrow();
+            Category trafficSignals = categoryRepository.findByName("TRAFFIC_SIGNALS").orElseThrow();
+            Category parkMaintenance = categoryRepository.findByName("PARK_MAINTENANCE").orElseThrow();
+            Category electricalDamage = categoryRepository.findByName("ELECTRICAL_DAMAGE").orElseThrow();
+            Category other = categoryRepository.findByName("OTHER").orElseThrow();
+
+            // Category → Department mapping with SLA and Base Priority
+            slaRepository.save(new SLA(pothole, 7, Priority.MEDIUM, roads));
+            slaRepository.save(new SLA(streetlight, 10, Priority.MEDIUM, electrical));
+            slaRepository.save(new SLA(waterShortage, 5, Priority.HIGH, waterSupply));
+            slaRepository.save(new SLA(sewerDrainage, 7, Priority.MEDIUM, sewerage));
+            slaRepository.save(new SLA(garbage, 3, Priority.LOW, sanitation));
+            slaRepository.save(new SLA(trafficSignals, 5, Priority.MEDIUM, traffic));
+            slaRepository.save(new SLA(parkMaintenance, 10, Priority.LOW, parks));
+            slaRepository.save(new SLA(electricalDamage, 3, Priority.CRITICAL, electrical));  // Safety!
+            slaRepository.save(new SLA(other, 14, Priority.LOW, admin));  // Catch-all
+
+            System.out.println("✓ SLA configurations initialized successfully");
         }
     }
 
@@ -98,6 +228,18 @@ public class DataInitializer implements CommandLineRunner {
             createStaff("Traffic Staff 2", "traffic2@gmail.com", "9876543602", 6L);
             createStaff("Traffic Staff 3", "traffic3@gmail.com", "9876543603", 6L);
             createDeptHead("Traffic Head", "traffichead@gmail.com", "9876543600", 6L);
+
+            // ===== DEPARTMENT 7: PARKS =====
+            createStaff("Parks Staff 1", "parks1@gmail.com", "9876543701", 7L);
+            createStaff("Parks Staff 2", "parks2@gmail.com", "9876543702", 7L);
+            createStaff("Parks Staff 3", "parks3@gmail.com", "9876543703", 7L);
+            createDeptHead("Parks Head", "parkshead@gmail.com", "9876543700", 7L);
+
+            // ===== DEPARTMENT 8: ADMIN =====
+            createStaff("Admin Staff 1", "admin1@gmail.com", "9876543801", 8L);
+            createStaff("Admin Staff 2", "admin2@gmail.com", "9876543802", 8L);
+            createStaff("Admin Staff 3", "admin3@gmail.com", "9876543803", 8L);
+            createDeptHead("Admin Head", "adminhead@gmail.com", "9876543800", 8L);
 
             System.out.println("✓ Sample staff and department heads initialized successfully");
         }
