@@ -1,5 +1,6 @@
 package com.backend.springapp.controller;
 
+import com.backend.springapp.dto.response.ComplaintResponseDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.model.Complaint;
@@ -22,16 +23,27 @@ public class ComplaintController {
 
     /**
      * Create a new complaint (filed by citizen)
+     * AI automatically analyzes and assigns: category, department, priority, SLA
      * POST /api/complaints/citizen/{citizenId}
      */
     @PostMapping("/citizen/{citizenId}")
-    public ResponseEntity<Complaint> createComplaint(@RequestBody Complaint complaint, @PathVariable Long citizenId) {
-        Complaint created = complaintService.createComplaint(complaint, citizenId);
+    public ResponseEntity<ComplaintResponseDTO> createComplaint(@RequestBody Complaint complaint, @PathVariable Long citizenId) {
+        ComplaintResponseDTO created = complaintService.createComplaint(complaint, citizenId);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
 
     /**
-     * Get complaint by ID
+     * Get complaint by ID with full AI analysis details
+     * GET /api/complaints/{complaintId}/details
+     */
+    @GetMapping("/{complaintId}/details")
+    public ResponseEntity<ComplaintResponseDTO> getComplaintDetails(@PathVariable Long complaintId) {
+        ComplaintResponseDTO complaint = complaintService.getComplaintResponseById(complaintId);
+        return ResponseEntity.ok(complaint);
+    }
+
+    /**
+     * Get complaint by ID (raw entity)
      * GET /api/complaints/{complaintId}
      */
     @GetMapping("/{complaintId}")
