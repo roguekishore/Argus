@@ -1,13 +1,6 @@
 package com.backend.springapp.whatsapp.service;
 
-import com.backend.springapp.model.Category;
-import com.backend.springapp.model.SLA;
-import com.backend.springapp.repository.CategoryRepository;
-import com.backend.springapp.repository.SLARepository;
-import com.backend.springapp.service.AIService;
 import com.backend.springapp.whatsapp.model.ConversationSession;
-import com.backend.springapp.whatsapp.model.ConversationSession.PartialComplaint;
-import com.backend.springapp.whatsapp.model.SessionState;
 import com.backend.springapp.whatsapp.model.WhatsAppMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,625 +11,429 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.*;
 
 /**
- * Main AI Agent service for WhatsApp conversations.
- * This is where the "agentic" behavior happens - the AI decides what to do next.
+ * TRUE AGENTIC AI - Gemini Function Calling with High Quality Responses
+ * 
+ * Uses Gemini 1.5 Pro for superior understanding and natural responses.
+ * The AI AUTONOMOUSLY decides which tool to call based on conversation context.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class WhatsAppAgentService {
-    
+
     private final SessionManager sessionManager;
     private final WhatsAppTools tools;
-    private final CategoryRepository categoryRepository;
-    private final SLARepository slaRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    
+
     @Value("${gemini.api.key:}")
     private String geminiApiKey;
-    
-    private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-    
-    /**
-     * Main entry point - process an incoming WhatsApp message and generate response
-     */
+
+    // Using Gemini 2.5 Pro (stable) for highest quality responses
+    private static final String GEMINI_URL = 
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent";
+
+    // ==================== ENTRY POINT ====================
+
     public String processMessage(WhatsAppMessage message) {
-        String phoneNumber = message.getCleanPhoneNumber();
-        String userMessage = message.getBody();
+        String phone = message.getCleanPhoneNumber();
+        String userMsg = message.getBody();
         
-        log.info("Processing message from {}: {}", phoneNumber, userMessage);
-        
-        // Get or create session
-        ConversationSession session = sessionManager.getOrCreateSession(phoneNumber);
-        
-        // Add user message to history
-        session.addMessage(ConversationSession.ChatMessage.userMessage(userMessage));
-        
-        // Handle location if shared
-        if (message.hasLocation()) {
-            return handleLocationShared(session, message);
-        }
-        
-        // Check if user is registered
+        log.info("📩 {} : {}", phone, userMsg);
+
+        ConversationSession session = sessionManager.getOrCreateSession(phone);
+        session.addMessage(ConversationSession.ChatMessage.userMessage(userMsg));
+
+        // Check if already registered in DB
         if (!session.isRegistered()) {
-            WhatsAppTools.UserInfo userInfo = tools.getUserByPhone(phoneNumber);
-            if (userInfo.isRegistered()) {
+            var user = tools.getUserByPhone(phone);
+            if (user.isRegistered()) {
                 session.setRegistered(true);
-                session.setUserId(userInfo.userId());
-                session.setUserName(userInfo.name());
+                session.setUserId(user.userId());
+                session.setUserName(user.name());
             }
         }
+
+        // AI decides what to do
+        String response = callGeminiWithTools(session, userMsg);
         
-        // Generate AI response based on conversation context
-        String response = generateAgentResponse(session, userMessage);
-        
-        // Add response to history
         session.addMessage(ConversationSession.ChatMessage.assistantMessage(response));
-        
-        // Save session
         sessionManager.saveSession(session);
         
         return response;
     }
-    
-    /**
-     * Handle when user shares their location
-     */
-    private String handleLocationShared(ConversationSession session, WhatsAppMessage message) {
-        String phoneNumber = session.getPhoneNumber();
-        
-        if (session.getState() == SessionState.COLLECTING_AWAITING_LOCATION) {
-            // We were waiting for location
-            PartialComplaint partial = session.getPartialComplaint();
-            if (partial == null) {
-                partial = new PartialComplaint();
-                session.setPartialComplaint(partial);
-            }
-            
-            partial.setLatitude(message.getLatitude());
-            partial.setLongitude(message.getLongitude());
-            
-            // Try to get address from coordinates (in production, use geocoding API)
-            String locationText = message.getAddress() != null 
-                ? message.getAddress() 
-                : String.format("Lat: %.6f, Long: %.6f", message.getLatitude(), message.getLongitude());
-            partial.setLocation(locationText);
-            
-            session.setState(SessionState.COLLECTING_CONFIRMING);
-            sessionManager.saveSession(session);
-            
-            return generateConfirmationMessage(session);
+
+    // ==================== GEMINI + FUNCTION CALLING ====================
+
+    private String callGeminiWithTools(ConversationSession session, String userMsg) {
+        if (geminiApiKey == null || geminiApiKey.isBlank()) {
+            return "⚠️ System not configured. Please contact support.";
         }
-        
-        // Location shared but we weren't specifically asking for it
-        return "📍 Got your location! How can I help you today?\n\n" +
-               "You can:\n" +
-               "• Report a civic issue\n" +
-               "• Check complaint status\n" +
-               "• Type 'help' for more options";
-    }
-    
-    /**
-     * Main AI decision-making - generate response based on context
-     */
-    private String generateAgentResponse(ConversationSession session, String userMessage) {
-        // Check for special commands first
-        String lowerMessage = userMessage.toLowerCase().trim();
-        
-        if (lowerMessage.equals("help") || lowerMessage.equals("menu")) {
-            return getHelpMessage();
-        }
-        
-        if (lowerMessage.equals("start over") || lowerMessage.equals("reset") || lowerMessage.equals("cancel")) {
-            session.reset();
-            sessionManager.saveSession(session);
-            return "🔄 Starting fresh!\n\nHow can I help you today?";
-        }
-        
-        if (lowerMessage.equals("status") || lowerMessage.contains("my complaint") || lowerMessage.contains("check status")) {
-            return handleStatusCheck(session);
-        }
-        
-        // If not registered, start onboarding
-        if (!session.isRegistered()) {
-            return handleOnboarding(session, userMessage);
-        }
-        
-        // IMPORTANT: Handle confirmation state BEFORE calling AI
-        // This is when user says "yes" to create the complaint
-        if (session.getState() == SessionState.COLLECTING_CONFIRMING) {
-            if (lowerMessage.equals("yes") || lowerMessage.equals("y") || lowerMessage.equals("हाँ") || lowerMessage.equals("haan") || lowerMessage.equals("confirm")) {
-                PartialComplaint partial = session.getPartialComplaint();
-                if (partial != null && partial.hasMinimumInfo()) {
-                    var result = tools.createComplaint(
-                        session.getUserId(),
-                        partial.getTitle(),
-                        partial.getDescription(),
-                        partial.getLocation(),
-                        partial.getLatitude(),
-                        partial.getLongitude()
-                    );
-                    
-                    session.reset();
-                    sessionManager.saveSession(session);
-                    
-                    if (result.success()) {
-                        return formatComplaintCreated(result);
-                    } else {
-                        return "❌ Sorry, couldn't create complaint: " + result.error() + "\n\nPlease try again.";
-                    }
-                } else {
-                    return "⚠️ Missing information. Please start over and describe your issue.";
-                }
-            } else if (lowerMessage.equals("no") || lowerMessage.equals("n") || lowerMessage.equals("नहीं") || lowerMessage.equals("cancel")) {
-                session.reset();
-                sessionManager.saveSession(session);
-                return "🔄 Cancelled. Feel free to start again anytime!\n\nJust describe your issue to file a new complaint.";
-            } else {
-                // User said something else, re-prompt
-                return "Please confirm:\n\n✅ Type *yes* to submit\n❌ Type *no* to cancel";
-            }
-        }
-        
-        // Handle location collection state
-        if (session.getState() == SessionState.COLLECTING_AWAITING_LOCATION) {
-            PartialComplaint partial = session.getPartialComplaint();
-            if (partial != null) {
-                partial.setLocation(userMessage);
-                session.setState(SessionState.COLLECTING_CONFIRMING);
-                sessionManager.saveSession(session);
-                return generateConfirmationMessage(session);
-            }
-        }
-        
-        // Use AI to understand intent and generate response
-        return callGeminiAgent(session, userMessage);
-    }
-    
-    /**
-     * Handle new user onboarding
-     */
-    private String handleOnboarding(ConversationSession session, String userMessage) {
-        if (session.getState() == SessionState.ONBOARDING_AWAITING_NAME) {
-            // User is providing their name
-            String name = userMessage.trim();
-            if (name.length() < 2 || name.length() > 100) {
-                return "Please enter a valid name (2-100 characters).";
-            }
-            
-            // Register user
-            WhatsAppTools.UserInfo userInfo = tools.registerUser(name, session.getPhoneNumber());
-            session.setRegistered(true);
-            session.setUserId(userInfo.userId());
-            session.setUserName(userInfo.name());
-            session.setState(SessionState.IDLE);
-            sessionManager.saveSession(session);
-            
-            return String.format("""
-                ✅ Welcome, %s!
-                
-                Your number %s is now registered.
-                
-                You can now:
-                📝 Report a civic issue (pothole, street light, garbage, etc.)
-                🔍 Check complaint status
-                
-                Just describe your problem or type 'help' for more options.
-                """, name, maskPhoneNumber(session.getPhoneNumber()));
-        }
-        
-        // First message from unregistered user
-        session.setState(SessionState.ONBOARDING_AWAITING_NAME);
-        sessionManager.saveSession(session);
-        
-        return """
-            👋 Welcome to Municipal Grievance Portal!
-            
-            I'm your AI assistant for reporting civic issues like:
-            • 🕳️ Potholes & road damage
-            • 💡 Street light problems
-            • 🚰 Water supply issues
-            • 🗑️ Garbage collection
-            • 🚽 Drainage problems
-            
-            I don't see your number registered yet.
-            
-            📝 What's your name?
-            """;
-    }
-    
-    /**
-     * Handle complaint status check
-     */
-    private String handleStatusCheck(ConversationSession session) {
-        if (!session.isRegistered() || session.getUserId() == null) {
-            return "Please register first by sending any message.";
-        }
-        
-        List<WhatsAppTools.ComplaintSummary> complaints = tools.listUserComplaints(session.getUserId());
-        
-        if (complaints.isEmpty()) {
-            return """
-                📋 You don't have any complaints yet.
-                
-                Would you like to report an issue? Just describe the problem!
-                """;
-        }
-        
-        StringBuilder sb = new StringBuilder("📋 *Your Complaints:*\n\n");
-        
-        for (int i = 0; i < complaints.size(); i++) {
-            WhatsAppTools.ComplaintSummary c = complaints.get(i);
-            String statusEmoji = getStatusEmoji(c.status());
-            sb.append(String.format("%d️⃣ *%s*\n", i + 1, c.displayId()));
-            sb.append(String.format("   %s %s\n", statusEmoji, c.status()));
-            sb.append(String.format("   📍 %s\n", truncate(c.title(), 30)));
-            sb.append(String.format("   📅 Filed: %s\n\n", c.filedDate()));
-        }
-        
-        sb.append("Reply with complaint number (e.g., '1') for details.");
-        
-        session.setState(SessionState.STATUS_CHECKING);
-        sessionManager.saveSession(session);
-        
-        return sb.toString();
-    }
-    
-    /**
-     * Call Gemini AI to understand intent and generate response
-     */
-    private String callGeminiAgent(ConversationSession session, String userMessage) {
-        if (geminiApiKey == null || geminiApiKey.isBlank() || geminiApiKey.equals("YOUR_API_KEY_HERE")) {
-            // Fallback to rule-based if no API key
-            return handleWithRules(session, userMessage);
-        }
-        
+
         try {
-            String systemPrompt = buildAgentSystemPrompt(session);
-            String conversationContext = session.getHistoryAsString();
-            
-            String fullPrompt = systemPrompt + "\n\n" +
-                "CONVERSATION HISTORY:\n" + conversationContext + "\n\n" +
-                "USER'S LATEST MESSAGE: " + userMessage + "\n\n" +
-                "Generate your response:";
-            
-            // Call Gemini
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             
-            Map<String, Object> requestBody = Map.of(
+            Map<String, Object> request = Map.of(
                 "contents", List.of(Map.of(
-                    "parts", List.of(Map.of("text", fullPrompt))
+                    "role", "user",
+                    "parts", List.of(Map.of("text", buildPrompt(session, userMsg)))
                 )),
+                "tools", List.of(Map.of("functionDeclarations", getTools())),
                 "generationConfig", Map.of(
-                    "temperature", 0.7,
-                    "maxOutputTokens", 500
+                    "temperature", 0.8,
+                    "maxOutputTokens", 1024,
+                    "topP", 0.95
                 )
             );
+
+            ResponseEntity<String> resp = restTemplate.postForEntity(
+                GEMINI_URL + "?key=" + geminiApiKey,
+                new HttpEntity<>(request, headers),
+                String.class
+            );
+
+            log.info("🤖 Gemini response status: {}", resp.getStatusCode());
+            log.debug("🤖 Gemini response body: {}", resp.getBody());
+
+            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                log.error("❌ Gemini API error: status={}, body={}", resp.getStatusCode(), resp.getBody());
+                return "I'm having trouble connecting. Please try again in a moment.";
+            }
+
+            JsonNode root = objectMapper.readTree(resp.getBody());
             
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            String url = GEMINI_URL + "?key=" + geminiApiKey;
-            
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
-            
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                JsonNode root = objectMapper.readTree(response.getBody());
-                String aiResponse = root.path("candidates").path(0)
-                    .path("content").path("parts").path(0)
-                    .path("text").asText();
-                
-                // Process any actions in the response
-                return processAgentResponse(session, aiResponse, userMessage);
+            // Check for API errors in response
+            if (root.has("error")) {
+                log.error("❌ Gemini API returned error: {}", root.path("error"));
+                return "I'm experiencing technical difficulties. Please try again.";
             }
             
+            JsonNode candidate = root.path("candidates").path(0);
+            
+            // Check for safety blocks
+            if (candidate.has("finishReason") && 
+                candidate.path("finishReason").asText().equals("SAFETY")) {
+                return "I couldn't process that request. Please try rephrasing.";
+            }
+
+            JsonNode part = candidate.path("content").path("parts").path(0);
+
+            // AI chose to call a function
+            if (part.has("functionCall")) {
+                return executeFunction(session, part.get("functionCall"));
+            }
+
+            // AI responds with text
+            String text = part.path("text").asText("");
+            log.info("🤖 AI response text: {}", text.length() > 100 ? text.substring(0, 100) + "..." : text);
+            return text.isEmpty() ? "How can I help you today?" : text;
+
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("❌ Gemini HTTP error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return "I'm experiencing technical difficulties. Please try again.";
         } catch (Exception e) {
-            log.error("Gemini API error: {}", e.getMessage());
+            log.error("❌ Gemini error: {}", e.getMessage(), e);
+            return "Sorry, I encountered an issue. Please try again.";
         }
-        
-        // Fallback
-        return handleWithRules(session, userMessage);
     }
-    
-    /**
-     * Process AI response and execute any actions
-     */
-    private String processAgentResponse(ConversationSession session, String aiResponse, String userMessage) {
-        // Check if AI wants to create a complaint
-        if (aiResponse.contains("[CREATE_COMPLAINT]") && session.getPartialComplaint() != null) {
-            PartialComplaint partial = session.getPartialComplaint();
-            if (partial.hasMinimumInfo()) {
-                // Create the complaint
-                var result = tools.createComplaint(
+
+    // ==================== EXECUTE AI'S CHOICE ====================
+
+    private String executeFunction(ConversationSession session, JsonNode fn) {
+        String name = fn.path("name").asText();
+        JsonNode args = fn.path("args");
+        
+        log.info("🤖 AI called function: {} with args: {}", name, args);
+
+        return switch (name) {
+            case "register_user" -> {
+                String userName = args.path("name").asText().trim();
+                if (userName.isEmpty() || userName.length() < 2) {
+                    yield "I didn't catch your name. Could you please tell me your full name?";
+                }
+                var r = tools.registerUser(userName, session.getPhoneNumber());
+                session.setRegistered(true);
+                session.setUserId(r.userId());
+                session.setUserName(r.name());
+                sessionManager.saveSession(session);
+                yield String.format("""
+                    ✅ *Welcome, %s!* 🎉
+                    
+                    You're now registered with the Municipal Grievance Portal.
+                    
+                    I can help you with:
+                    📝 *Report an issue* - Just describe the problem and location
+                    🔍 *Check status* - Say "status" or "my complaints"
+                    
+                    What would you like to do today?""", r.name());
+            }
+
+            case "create_complaint" -> {
+                if (!session.isRegistered()) {
+                    yield "Before I can file a complaint, I need to register you. What's your name?";
+                }
+                
+                String title = args.path("title").asText();
+                String description = args.path("description").asText();
+                String location = args.path("location").asText();
+                
+                if (description.isEmpty() || location.isEmpty()) {
+                    yield "I need both the issue description and location to file a complaint. Could you provide the missing details?";
+                }
+                
+                var r = tools.createComplaint(
                     session.getUserId(),
-                    partial.getTitle() != null ? partial.getTitle() : "Civic Issue",
-                    partial.getDescription(),
-                    partial.getLocation(),
-                    partial.getLatitude(),
-                    partial.getLongitude()
+                    title.isEmpty() ? description.substring(0, Math.min(50, description.length())) : title,
+                    description,
+                    location, null, null
                 );
                 
-                if (result.success()) {
-                    session.reset();
-                    sessionManager.saveSession(session);
-                    return formatComplaintCreated(result);
+                if (r.success()) {
+                    yield String.format("""
+                        ✅ *Complaint Registered Successfully!*
+                        
+                        📋 *Complaint ID:* %s
+                        🏷️ *Category:* %s
+                        🏢 *Assigned to:* %s Department
+                        ⏰ *Resolution Time:* %d working days
+                        📅 *Expected by:* %s
+                        
+                        💡 *Tip:* Save your complaint ID to track progress.
+                        Type "status" anytime to check updates!""",
+                        r.displayId(),
+                        r.category(),
+                        r.department(),
+                        r.slaDays(),
+                        r.deadline());
+                } else {
+                    yield "❌ I couldn't register your complaint. Please try again or contact support.";
                 }
             }
-        }
-        
-        // Check if AI detected we need location
-        if (aiResponse.contains("[NEED_LOCATION]")) {
-            session.setState(SessionState.COLLECTING_AWAITING_LOCATION);
-            
-            // Extract description from message and store
-            PartialComplaint partial = session.getPartialComplaint();
-            if (partial == null) {
-                partial = new PartialComplaint();
-                session.setPartialComplaint(partial);
+
+            case "list_complaints" -> {
+                if (!session.isRegistered()) {
+                    yield "I need to register you first. What's your name?";
+                }
+                var list = tools.listUserComplaints(session.getUserId());
+                if (list.isEmpty()) {
+                    yield """
+                        📋 *No Complaints Found*
+                        
+                        You haven't filed any complaints yet.
+                        
+                        Want to report an issue? Just describe the problem and its location!""";
+                }
+                StringBuilder sb = new StringBuilder("📋 *Your Complaints:*\n\n");
+                for (var c : list) {
+                    sb.append(String.format("*%s* %s\n", c.displayId(), getStatusEmoji(c.status())));
+                    sb.append(String.format("└ %s\n", truncate(c.title(), 40)));
+                    sb.append(String.format("└ Status: *%s*\n", formatStatus(c.status())));
+                    sb.append(String.format("└ Filed: %s\n\n", c.filedDate()));
+                }
+                sb.append("_Reply with complaint ID for more details_");
+                yield sb.toString();
             }
-            partial.setDescription(userMessage);
-            partial.setTitle(truncate(userMessage, 50));
-            
-            sessionManager.saveSession(session);
-        }
-        
-        // Clean up action markers from response
-        return aiResponse
-            .replace("[CREATE_COMPLAINT]", "")
-            .replace("[NEED_LOCATION]", "")
-            .replace("[NEED_DESCRIPTION]", "")
-            .trim();
-    }
-    
-    /**
-     * Rule-based fallback when AI is not available
-     */
-    private String handleWithRules(ConversationSession session, String userMessage) {
-        String lower = userMessage.toLowerCase();
-        
-        // Check if it looks like a complaint
-        boolean looksLikeComplaint = lower.contains("pothole") || lower.contains("road") ||
-            lower.contains("light") || lower.contains("water") || lower.contains("garbage") ||
-            lower.contains("drain") || lower.contains("broken") || lower.contains("not working") ||
-            lower.contains("problem") || lower.contains("issue");
-        
-        if (looksLikeComplaint) {
-            // Start complaint collection
-            PartialComplaint partial = new PartialComplaint();
-            partial.setDescription(userMessage);
-            partial.setTitle(truncate(userMessage, 50));
-            session.setPartialComplaint(partial);
-            session.setState(SessionState.COLLECTING_AWAITING_LOCATION);
-            sessionManager.saveSession(session);
-            
-            return """
-                I understand you're reporting an issue.
+
+            case "get_complaint_status" -> {
+                String complaintIdInput = args.path("complaint_id").asText();
+                Long id = extractComplaintId(complaintIdInput);
                 
-                📍 *Where exactly is this problem?*
+                if (id == null) {
+                    yield "I couldn't find that complaint ID. Please check and try again.\n\nFormat: GRV-2026-00001 or just the number";
+                }
                 
-                You can:
-                • Share your live location 📍
-                • Type the address/landmark
-                """;
-        }
-        
-        // Check if user is providing location
-        if (session.getState() == SessionState.COLLECTING_AWAITING_LOCATION) {
-            PartialComplaint partial = session.getPartialComplaint();
-            if (partial != null) {
-                partial.setLocation(userMessage);
-                session.setState(SessionState.COLLECTING_CONFIRMING);
-                sessionManager.saveSession(session);
-                
-                return generateConfirmationMessage(session);
-            }
-        }
-        
-        // Check for confirmation
-        if (session.getState() == SessionState.COLLECTING_CONFIRMING) {
-            if (lower.equals("yes") || lower.equals("y") || lower.equals("हाँ") || lower.equals("haan")) {
-                PartialComplaint partial = session.getPartialComplaint();
-                if (partial != null && partial.hasMinimumInfo()) {
-                    var result = tools.createComplaint(
-                        session.getUserId(),
-                        partial.getTitle(),
-                        partial.getDescription(),
-                        partial.getLocation(),
-                        partial.getLatitude(),
-                        partial.getLongitude()
-                    );
-                    
-                    session.reset();
-                    sessionManager.saveSession(session);
-                    
-                    if (result.success()) {
-                        return formatComplaintCreated(result);
-                    } else {
-                        return "❌ Sorry, couldn't create complaint. Please try again.";
+                var c = tools.getComplaintDetails(id);
+                if (c == null) {
+                    // Try to be helpful
+                    if (session.isRegistered()) {
+                        var userComplaints = tools.listUserComplaints(session.getUserId());
+                        if (!userComplaints.isEmpty()) {
+                            yield String.format("""
+                                ❌ Complaint not found with ID: %s
+                                
+                                Your recent complaints:
+                                %s
+                                
+                                Please use one of these IDs.""",
+                                complaintIdInput,
+                                userComplaints.stream()
+                                    .limit(3)
+                                    .map(comp -> "• " + comp.displayId())
+                                    .reduce((a, b) -> a + "\n" + b)
+                                    .orElse("None"));
+                        }
                     }
+                    yield "❌ Complaint not found. Please check the ID and try again.";
                 }
-            } else if (lower.equals("no") || lower.equals("n") || lower.equals("नहीं")) {
-                session.reset();
-                sessionManager.saveSession(session);
-                return "🔄 Cancelled. Feel free to start again anytime!";
-            }
-        }
-        
-        // Default response
-        return """
-            I'm not sure what you need. 🤔
-            
-            You can:
-            📝 *Report an issue* - Just describe the problem
-            🔍 *Check status* - Type "status"
-            ❓ *Get help* - Type "help"
-            
-            Example: "There's a big pothole on MG Road near the bus stop"
-            """;
-    }
-    
-    /**
-     * Generate confirmation message before submitting complaint
-     */
-    private String generateConfirmationMessage(ConversationSession session) {
-        PartialComplaint partial = session.getPartialComplaint();
-        if (partial == null) {
-            return "Something went wrong. Please start again.";
-        }
-        
-        return String.format("""
-            📋 *Complaint Summary*
-            ━━━━━━━━━━━━━━━━━━━━
-            
-            🔹 *Issue:* %s
-            📍 *Location:* %s
-            
-            Should I submit this complaint?
-            
-            Reply *Yes* to confirm or *No* to cancel.
-            """,
-            partial.getDescription() != null ? partial.getDescription() : "Not specified",
-            partial.getLocation() != null ? partial.getLocation() : "Not specified"
-        );
-    }
-    
-    /**
-     * Format success message after complaint creation
-     */
-    private String formatComplaintCreated(WhatsAppTools.ComplaintResult result) {
-        return String.format("""
-            ✅ *Complaint Registered Successfully!*
-            
-            📋 Complaint ID: *GRV-2026-%05d*
-            📅 Filed: Today
-            
-            You'll receive updates on this number.
-            
-            Type "status" anytime to check progress.
-            
-            Is there anything else I can help with?
-            """, result.complaintId());
-    }
-    
-    /**
-     * Build system prompt for the AI agent
-     */
-    private String buildAgentSystemPrompt(ConversationSession session) {
-        List<Category> categories = categoryRepository.findAll();
-        String categoryList = categories.stream()
-            .map(c -> "- " + c.getName() + ": " + c.getDescription())
-            .collect(Collectors.joining("\n"));
-        
-        String sessionContext = String.format("""
-            USER CONTEXT:
-            - Name: %s
-            - Phone: %s
-            - Registered: %s
-            - Current State: %s
-            """,
-            session.getUserName() != null ? session.getUserName() : "Unknown",
-            maskPhoneNumber(session.getPhoneNumber()),
-            session.isRegistered() ? "Yes" : "No",
-            session.getState()
-        );
-        
-        if (session.getPartialComplaint() != null) {
-            PartialComplaint p = session.getPartialComplaint();
-            sessionContext += String.format("""
                 
-                PARTIAL COMPLAINT BEING BUILT:
-                - Description: %s
-                - Location: %s
-                - Has Location: %s
-                """,
-                p.getDescription() != null ? p.getDescription() : "Not provided",
-                p.getLocation() != null ? p.getLocation() : "Not provided",
-                p.hasLocation() ? "Yes" : "No"
-            );
-        }
-        
+                StringBuilder sb = new StringBuilder();
+                sb.append(String.format("📋 *Complaint Details*\n\n"));
+                sb.append(String.format("🔖 *ID:* %s\n", c.displayId()));
+                sb.append(String.format("%s *Status:* %s\n\n", getStatusEmoji(c.status()), formatStatus(c.status())));
+                sb.append(String.format("📍 *Issue:* %s\n", c.title()));
+                sb.append(String.format("📌 *Location:* %s\n", c.location()));
+                sb.append(String.format("🏢 *Department:* %s\n", c.department()));
+                sb.append(String.format("📅 *Filed:* %s\n", c.filedDate()));
+                sb.append(String.format("⏰ *Due by:* %s\n", c.dueDate()));
+                
+                if (c.staffName() != null && !c.staffName().isEmpty()) {
+                    sb.append(String.format("\n👤 *Assigned to:* %s\n", c.staffName()));
+                }
+                
+                yield sb.toString();
+            }
+
+            default -> "I'm not sure how to help with that. Could you please rephrase?";
+        };
+    }
+
+    // ==================== TOOL DEFINITIONS ====================
+
+    private List<Map<String, Object>> getTools() {
+        return List.of(
+            tool("register_user", 
+                 "Register a new citizen user. Call this ONLY when an unregistered user explicitly provides their name for registration. Do not call for greetings.",
+                 Map.of("name", prop("string", "The user's full name as they provided it")), 
+                 List.of("name")),
+            
+            tool("create_complaint",
+                 "Create a new civic complaint. ONLY call when you have BOTH: 1) A clear description of the issue/problem, AND 2) A specific location. If either is missing, ask the user for it first - do NOT call this function.",
+                 Map.of(
+                     "title", prop("string", "A brief title summarizing the issue (max 50 chars)"),
+                     "description", prop("string", "Detailed description of the problem"),
+                     "location", prop("string", "Specific location/address where the issue exists")
+                 ), 
+                 List.of("description", "location")),
+            
+            tool("list_complaints",
+                 "List all complaints filed by the current user. Call when user asks about 'my complaints', 'status', 'check status', or wants to see their filed complaints.",
+                 Map.of(), 
+                 List.of()),
+            
+            tool("get_complaint_status",
+                 "Get detailed status of a specific complaint by its ID. Call when user provides a complaint ID like 'GRV-2026-00001' or asks about a specific complaint number.",
+                 Map.of("complaint_id", prop("string", "The complaint ID (e.g., GRV-2026-00001 or just the number)")), 
+                 List.of("complaint_id"))
+        );
+    }
+
+    // ==================== SYSTEM PROMPT ====================
+
+    private String buildPrompt(ConversationSession session, String userMsg) {
+        String userStatus = session.isRegistered() 
+            ? String.format("REGISTERED USER: %s (ID: %d)", session.getUserName(), session.getUserId())
+            : "UNREGISTERED USER - Must register with name before filing complaints";
+
         return String.format("""
-            You are a helpful AI assistant for a Municipal Grievance Redressal System on WhatsApp.
+            You are a friendly and helpful Municipal Grievance Assistant on WhatsApp for an Indian city.
+            Your role is to help citizens report civic issues and track their complaints.
             
-            YOUR ROLE:
-            - Help citizens report civic issues (potholes, street lights, water, garbage, etc.)
-            - Check status of existing complaints
-            - Be friendly, concise, and helpful
-            - Support English and Hindi
-            
-            AVAILABLE CATEGORIES:
+            === CURRENT USER STATUS ===
             %s
             
+            === YOUR AVAILABLE TOOLS ===
+            1. register_user - Register a new user (only when they provide their name for registration)
+            2. create_complaint - File a new complaint (REQUIRES both issue description AND location)
+            3. list_complaints - Show user's complaints (when they ask for status/my complaints)
+            4. get_complaint_status - Get details of a specific complaint ID
+            
+            === CRITICAL RULES ===
+            1. For UNREGISTERED users: Warmly greet them and ask for their name to register. Don't file complaints until registered.
+            
+            2. For filing complaints: You MUST have BOTH:
+               - A clear description of the issue (pothole, street light, water leak, garbage, drainage, etc.)
+               - A specific location (street name, landmark, area)
+               If EITHER is missing, politely ask for it. Do NOT call create_complaint without both.
+            
+            3. When user says "status" or "my complaints" - call list_complaints
+            
+            4. When user provides a complaint ID (like GRV-2026-00001) - call get_complaint_status
+            
+            5. Be conversational, warm, and use appropriate emojis. Keep responses concise but helpful.
+            
+            6. IMPORTANT: When you have sufficient information, CALL THE APPROPRIATE FUNCTION. Don't just describe what you'll do.
+            
+            === CONVERSATION HISTORY ===
             %s
             
-            RULES:
-            1. Keep messages SHORT (WhatsApp-friendly, max 300 words)
-            2. Use emojis sparingly for clarity
-            3. If complaint description is given but location is missing, ask for location
-               Include [NEED_LOCATION] in your response
-            4. If you have both description and location, generate confirmation and include [CREATE_COMPLAINT]
-            5. ONE question at a time
-            6. For emergencies (electric wire, gas leak), emphasize urgency
+            === USER'S MESSAGE ===
+            %s
             
-            RESPONSE FORMAT:
-            - Use bullet points
-            - Use *bold* for emphasis (WhatsApp markdown)
-            - Keep paragraphs short
-            """, categoryList, sessionContext);
+            Respond naturally and helpfully. If you need to call a function, do so. Otherwise, respond with text.""",
+            userStatus, 
+            session.getHistoryAsString(), 
+            userMsg);
     }
-    
-    // ============ Helper Methods ============
-    
-    private String getHelpMessage() {
-        return """
-            📱 *Municipal Grievance Portal - Help*
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            
-            🆕 *Report New Issue*
-            Just describe your problem!
-            Example: "Street light not working near my house"
-            
-            📋 *Check Status*
-            Type "status" to see your complaints
-            
-            🔄 *Start Over*
-            Type "reset" to start fresh
-            
-            📞 *Emergency?*
-            For life-threatening issues, also call:
-            🚨 Emergency: 112
-            🔥 Fire: 101
-            🚑 Ambulance: 108
-            
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            Just send a message to begin!
-            """;
+
+    // ==================== HELPERS ====================
+
+    private Map<String, Object> tool(String name, String desc, Map<String, Object> props, List<String> req) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("type", "object");
+        params.put("properties", props);
+        if (!req.isEmpty()) params.put("required", req);
+        return Map.of("name", name, "description", desc, "parameters", params);
     }
-    
+
+    private Map<String, String> prop(String type, String desc) {
+        return Map.of("type", type, "description", desc);
+    }
+
+    private Long extractComplaintId(String input) {
+        if (input == null || input.isBlank()) return null;
+        
+        // Remove common prefixes and extract number
+        String cleaned = input.toUpperCase()
+            .replace("GRV-2026-", "")
+            .replace("GRV2026", "")
+            .replace("GRV-", "")
+            .replace("GRV", "")
+            .replaceAll("[^0-9]", "");
+        
+        if (cleaned.isEmpty()) return null;
+        
+        try {
+            return Long.parseLong(cleaned);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private String getStatusEmoji(String status) {
-        return switch(status.toUpperCase()) {
-            case "FILED", "OPEN" -> "🔵";
-            case "IN_PROGRESS" -> "🟡";
-            case "RESOLVED" -> "✅";
+        if (status == null) return "⚪";
+        return switch (status.toUpperCase()) {
+            case "FILED", "OPEN" -> "🟡";
+            case "ASSIGNED" -> "🔵";
+            case "IN_PROGRESS" -> "🟠";
+            case "RESOLVED" -> "🟢";
             case "CLOSED" -> "✅";
-            case "CANCELLED" -> "❌";
             case "HOLD" -> "⏸️";
+            case "CANCELLED" -> "❌";
             default -> "⚪";
         };
     }
-    
-    private String truncate(String text, int maxLength) {
-        if (text == null) return "";
-        return text.length() > maxLength ? text.substring(0, maxLength) + "..." : text;
+
+    private String formatStatus(String status) {
+        if (status == null) return "Filed";
+        return switch (status.toUpperCase()) {
+            case "FILED" -> "Filed - Awaiting Review";
+            case "OPEN" -> "Open";
+            case "ASSIGNED" -> "Assigned to Staff";
+            case "IN_PROGRESS" -> "Work In Progress";
+            case "RESOLVED" -> "Resolved";
+            case "CLOSED" -> "Closed";
+            case "HOLD" -> "On Hold";
+            case "CANCELLED" -> "Cancelled";
+            default -> status;
+        };
     }
-    
-    private String maskPhoneNumber(String phone) {
-        if (phone == null || phone.length() < 6) return phone;
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+
+    private String truncate(String s, int maxLen) {
+        if (s == null) return "";
+        return s.length() > maxLen ? s.substring(0, maxLen - 3) + "..." : s;
     }
 }
