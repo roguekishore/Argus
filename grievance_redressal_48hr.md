@@ -361,28 +361,38 @@ NOTIFICATION CONTENT:
 ```
 - complaint_id (PK)
 - complaint_number (VARCHAR UNIQUE) - "comp_2024_001"
-- citizen_id (FK to user)
-- category (ENUM: POTHOLE, STREETLIGHT, WATER, etc.)
 - description (TEXT)
 - location_address (VARCHAR)
-- latitude (DECIMAL, optional)
-- longitude (DECIMAL, optional)
-- photo_url (VARCHAR, optional)
-- priority (ENUM: LOW, MEDIUM, HIGH, CRITICAL)
-- status (ENUM: FILED, OPEN, IN_PROGRESS, HOLD, RESOLVED, CLOSED, CANCELLED)
-- assigned_department_id (FK)
+
+- citizen_id (FK to user)
 - assigned_staff_id (FK to user, NULL initially)
-- filed_date (TIMESTAMP)
-- sla_deadline (TIMESTAMP) - calculated from filed_date + category SLA
+- assigned_department_id (FK)
+
+- category (ENUM: POTHOLE, STREETLIGHT, WATER, etc.)
+- status (ENUM: FILED, OPEN, IN_PROGRESS, HOLD, RESOLVED, CLOSED, CANCELLED)
+
+- created_at
 - start_date (TIMESTAMP, when moved to IN_PROGRESS)
+- updated_at
 - resolved_date (TIMESTAMP)
 - closed_date (TIMESTAMP)
+
+- latitude (DECIMAL, optional)
+- longitude (DECIMAL, optional)
+
+- photo_url (VARCHAR, optional)
+
+- priority (ENUM: LOW, MEDIUM, HIGH, CRITICAL)
+
+- citizen_satisfaction (INT 1-5, NULL until rated)
+
+- filed_date (TIMESTAMP)
+
+- sla_deadline (TIMESTAMP) - calculated from filed_date + category SLA
 - escalation_level (INT, default 0) - 0, 1, 2, 3 (escalated to higher authority)
 - escalation_history (JSON) - [{level: 1, date: '...', notified_to: 'supervisor'}, ...]
-- citizen_satisfaction (INT 1-5, NULL until rated)
+
 - is_duplicate_of (FK to complaint, NULL if not duplicate)
-- created_at
-- updated_at
 - INDEX idx_status
 - INDEX idx_category
 - INDEX idx_sla_deadline

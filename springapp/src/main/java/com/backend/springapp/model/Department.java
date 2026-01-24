@@ -7,7 +7,6 @@ import com.backend.springapp.enums.UserType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,7 +24,6 @@ public class Department {
     
     private String name;
 
-    // All users belonging to this department (STAFF, DEPTHEAD, etc.)
     @OneToMany(mappedBy = "department")
     private List<User> departmentMembers;
     
@@ -45,6 +43,4 @@ public class Department {
             .filter(user -> user.getUserType() == UserType.STAFF)
             .toList();
     }
-    
-    // Note: Citizens may also reference a department but aren't "members"
 }
