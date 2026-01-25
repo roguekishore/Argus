@@ -194,6 +194,145 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
     }
     
+    // ==================== DOMAIN RULE GUARD EXCEPTIONS ====================
+    
+    /**
+     * Handle resolution proof required errors.
+     * 
+     * Thrown when staff tries to resolve a complaint without submitting proof first.
+     * This enforces the domain rule: proof must exist before resolution.
+     * 
+     * HTTP 422 Unprocessable Entity - precondition not met
+     */
+    @ExceptionHandler(ResolutionProofRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleResolutionProofRequiredException(
+            ResolutionProofRequiredException ex, WebRequest request) {
+        
+        log.warn("Resolution proof required: complaint={}", ex.getComplaintId());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.UNPROCESSABLE_ENTITY.value())
+            .error("Resolution Proof Required")
+            .message(ex.getMessage())
+            .path(request.getDescription(false).replace("uri=", ""))
+            .errors(List.of(
+                "Submit proof via: POST /api/complaints/" + ex.getComplaintId() + "/resolution-proof",
+                "Then retry the resolve operation"
+            ))
+            .build();
+        
+        return new ResponseEntity<>(errorResponse, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+    
+    /**
+     * Handle citizen signoff required errors.
+     * 
+     * Thrown when attempting to close a complaint without citizen acceptance.
+     * This enforces the domain rule: only the citizen who filed can close.
+     * 
+     * HTTP 422 Unprocessable Entity - precondition not met
+     */
+    @ExceptionHandler(SignoffRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleSignoffRequiredException(
+            SignoffRequiredException ex, WebRequest request) {
+        
+        log.warn("Citizen signoff required: complaint={}", ex.getComplaintId());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.UNPROCESSABLE_ENTITY.value())
+            .error("Citizen Signoff Required")
+            .message(ex.getMessage())
+            .path(request.getDescription(false).replace("uri=", ""))
+            .errors(List.of(
+                "Only the citizen who filed this complaint can close it",
+                "Citizen must accept resolution via: POST /api/complaints/" + ex.getComplaintId() + "/signoff"
+            ))
+            .build();
+        
+        return new ResponseEntity<>(errorResponse, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+    
+    // ==================== DISPUTE EXCEPTIONS ====================
+    
+    /**
+     * Handle invalid dispute state errors.
+     * 
+     * Thrown when a dispute operation is attempted on a complaint
+     * that is not in the expected state for that operation.
+     * 
+     * HTTP 400 Bad Request - the operation precondition is not met
+     */
+    @ExceptionHandler(InvalidDisputeStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidDisputeStateException(
+            InvalidDisputeStateException ex, WebRequest request) {
+        
+        log.warn("Invalid dispute state: complaint={}, current={}, expected={}", 
+            ex.getComplaintId(), ex.getCurrentState(), ex.getExpectedState());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error("Invalid Dispute State")
+            .message(ex.getMessage())
+            .path(request.getDescription(false).replace("uri=", ""))
+            .build();
+        
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+    
+    /**
+     * Handle duplicate dispute errors.
+     * 
+     * Thrown when a citizen attempts to file a dispute when they already
+     * have a pending dispute for the same complaint.
+     * 
+     * HTTP 409 Conflict - duplicate operation
+     */
+    @ExceptionHandler(DuplicateDisputeException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateDisputeException(
+            DuplicateDisputeException ex, WebRequest request) {
+        
+        log.warn("Duplicate dispute: complaint={}", ex.getComplaintId());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.CONFLICT.value())
+            .error("Duplicate Dispute")
+            .message(ex.getMessage())
+            .path(request.getDescription(false).replace("uri=", ""))
+            .errors(List.of(
+                "Only one dispute can be pending at a time per complaint",
+                "Wait for the department to review your existing dispute"
+            ))
+            .build();
+        
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+    
+    /**
+     * Handle illegal argument exceptions (validation errors in service layer).
+     * 
+     * HTTP 400 Bad Request
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
+            IllegalArgumentException ex, WebRequest request) {
+        
+        log.warn("Invalid argument: {}", ex.getMessage());
+        
+        ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error("Invalid Request")
+            .message(ex.getMessage())
+            .path(request.getDescription(false).replace("uri=", ""))
+            .build();
+        
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+    
     /**
      * Handle all other exceptions
      */

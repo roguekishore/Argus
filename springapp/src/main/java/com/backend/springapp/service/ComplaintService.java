@@ -1,7 +1,9 @@
 package com.backend.springapp.service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,10 +27,20 @@ import com.backend.springapp.repository.DepartmentRepository;
 import com.backend.springapp.repository.SLARepository;
 import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.service.AIService.AIDecision;
+import com.backend.springapp.service.ImageAnalysisService.ImageAnalysisResult;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Transactional
+@Slf4j
 public class ComplaintService {
+    
+    /**
+     * Confidence threshold for automatic routing.
+     * Below this threshold, complaints are flagged for manual admin routing.
+     */
+    private static final double AI_CONFIDENCE_THRESHOLD = 0.7;
     
     @Autowired
     private ComplaintRepository complaintRepository;
@@ -53,6 +65,12 @@ public class ComplaintService {
 
     @Autowired
     private NotificationService notificationService;
+    
+    @Autowired
+    private S3StorageService s3StorageService;
+    
+    @Autowired
+    private ImageAnalysisService imageAnalysisService;
 
     /**
      * Create a new complaint (filed by citizen)
@@ -87,12 +105,27 @@ public class ComplaintService {
             .orElseThrow(() -> new ResourceNotFoundException("SLA not found for category: " + category.getName()));
 
         saved.setCategoryId(category.getId());
-        saved.setDepartmentId(slaConfig.getDepartment().getId());
         saved.setPriority(Priority.valueOf(aiDecision.priority));
         saved.setSlaDaysAssigned(aiDecision.slaDays);
         saved.setSlaDeadline(LocalDateTime.now().plusDays(aiDecision.slaDays));
         saved.setAiReasoning(aiDecision.reasoning);
         saved.setAiConfidence(aiDecision.confidence);
+
+        // Check AI confidence for automatic vs manual routing
+        String departmentName;
+        if (aiDecision.confidence < AI_CONFIDENCE_THRESHOLD) {
+            // Low confidence: leave department unassigned for manual routing by admin
+            saved.setDepartmentId(null);
+            saved.setNeedsManualRouting(true);
+            departmentName = "Pending Assignment";
+            log.warn("⚠️ Low AI confidence ({}) for complaint #{} - flagged for manual routing", 
+                     aiDecision.confidence, saved.getComplaintId());
+        } else {
+            // High confidence: auto-assign to AI-determined department
+            saved.setDepartmentId(slaConfig.getDepartment().getId());
+            saved.setNeedsManualRouting(false);
+            departmentName = slaConfig.getDepartment().getName();
+        }
 
         Complaint finalComplaint = complaintRepository.save(saved);
 
@@ -106,12 +139,15 @@ public class ComplaintService {
         );
         
         // AUDIT: Record initial department assignment by AI
+        String auditReason = saved.getNeedsManualRouting() 
+            ? "Low AI confidence (" + aiDecision.confidence + ") - pending manual routing"
+            : "AI-assigned department: " + departmentName;
         auditService.recordDepartmentAssignment(
             finalComplaint.getComplaintId(),
             null,  // No previous department
-            slaConfig.getDepartment().getId(),
+            saved.getDepartmentId(),
             AuditActorContext.system(),
-            "AI-assigned department: " + slaConfig.getDepartment().getName()
+            auditReason
         );
 
         // NOTIFY: Confirm to citizen that complaint was filed
@@ -125,7 +161,239 @@ public class ComplaintService {
         // );
 
         // Build response with all details
-        return buildResponseDTO(finalComplaint, category.getName(), slaConfig.getDepartment().getName());
+        return buildResponseDTO(finalComplaint, category.getName(), departmentName);
+    }
+    
+    /**
+     * Create a new complaint WITH image evidence (from frontend multipart upload).
+     * 
+     * ENHANCED FEATURE:
+     * - Accepts raw image bytes from frontend
+     * - Uploads image to S3 for permanent storage
+     * - Performs multimodal AI analysis (text + image)
+     * - Can upgrade priority based on visual severity
+     * - Caches image analysis results with complaint
+     * 
+     * @param complaint The complaint entity with text fields
+     * @param citizenId The citizen filing the complaint
+     * @param imageBytes Raw image bytes (can be null)
+     * @param imageMimeType MIME type of the image (required if imageBytes present)
+     * @return ComplaintResponseDTO with AI decision and image analysis
+     */
+    public ComplaintResponseDTO createComplaintWithImage(Complaint complaint, Long citizenId, 
+                                                          byte[] imageBytes, String imageMimeType) {
+        if (!userRepository.existsById(citizenId)) {
+            throw new ResourceNotFoundException("Citizen not found with id: " + citizenId);
+        }
+        
+        // Set basic fields
+        complaint.setCitizenId(citizenId);
+        complaint.setStatus(ComplaintStatus.FILED);
+        complaint.setStaffId(null);
+        complaint.setStartTime(null);
+        complaint.setUpdatedTime(null);
+        complaint.setResolvedTime(null);
+        complaint.setClosedTime(null);
+        complaint.setCitizenSatisfaction(null);
+
+        // STEP 1: Upload image to S3 if provided (before saving complaint)
+        if (imageBytes != null && imageBytes.length > 0) {
+            try {
+                String s3Key = s3StorageService.uploadImage(imageBytes, imageMimeType, null);
+                if (s3Key != null) {
+                    complaint.setImageS3Key(s3Key);
+                    complaint.setImageMimeType(imageMimeType);
+                    log.info("📷 Image uploaded to S3: {} ({} bytes)", s3Key, imageBytes.length);
+                }
+            } catch (Exception e) {
+                // Non-blocking: log error but continue with complaint creation
+                log.error("❌ Image upload failed (non-blocking): {}", e.getMessage());
+            }
+        }
+
+        // Save first to get ID
+        Complaint saved = complaintRepository.save(complaint);
+
+        // STEP 2: Multimodal AI analysis (text + image if available)
+        AIDecision aiDecision;
+        if (imageBytes != null && imageBytes.length > 0) {
+            log.info("📷 Running multimodal AI analysis for complaint #{}", saved.getComplaintId());
+            aiDecision = aiService.analyzeComplaint(saved, imageBytes, imageMimeType);
+        } else {
+            aiDecision = aiService.analyzeComplaint(saved);
+        }
+
+        // Apply AI decision
+        Category category = categoryRepository.findByName(aiDecision.categoryName)
+            .orElseGet(() -> categoryRepository.findByName("OTHER").orElseThrow());
+
+        SLA slaConfig = slaRepository.findByCategory(category)
+            .orElseThrow(() -> new ResourceNotFoundException("SLA not found for category: " + category.getName()));
+
+        saved.setCategoryId(category.getId());
+        saved.setPriority(Priority.valueOf(aiDecision.priority));
+        saved.setSlaDaysAssigned(aiDecision.slaDays);
+        saved.setSlaDeadline(LocalDateTime.now().plusDays(aiDecision.slaDays));
+        saved.setAiReasoning(aiDecision.getFullReasoning());  // Includes image findings
+        saved.setAiConfidence(aiDecision.confidence);
+
+        // Check AI confidence for automatic vs manual routing
+        String departmentName;
+        if (aiDecision.confidence < AI_CONFIDENCE_THRESHOLD) {
+            // Low confidence: leave department unassigned for manual routing by admin
+            saved.setDepartmentId(null);
+            saved.setNeedsManualRouting(true);
+            departmentName = "Pending Assignment";
+            log.warn("⚠️ Low AI confidence ({}) for complaint #{} - flagged for manual routing", 
+                     aiDecision.confidence, saved.getComplaintId());
+        } else {
+            // High confidence: auto-assign to AI-determined department
+            saved.setDepartmentId(slaConfig.getDepartment().getId());
+            saved.setNeedsManualRouting(false);
+            departmentName = slaConfig.getDepartment().getName();
+        }
+
+        // STEP 3: Cache image analysis results if image was analyzed
+        if (aiDecision.hasImageFindings()) {
+            saved.setImageAnalysis(aiDecision.imageFindings);
+            saved.setImageAnalyzedAt(LocalDateTime.now());
+        }
+
+        Complaint finalComplaint = complaintRepository.save(saved);
+
+        // AUDIT: Record complaint creation
+        auditService.recordComplaintStateChange(
+            finalComplaint.getComplaintId(),
+            null,
+            ComplaintStatus.FILED.name(),
+            AuditActorContext.forUser(citizenId),
+            "Complaint filed by citizen" + (imageBytes != null ? " (with image evidence)" : "")
+        );
+        
+        String auditReason = saved.getNeedsManualRouting() 
+            ? "Low AI confidence (" + aiDecision.confidence + ") - pending manual routing"
+            : "AI-assigned department: " + departmentName;
+        auditService.recordDepartmentAssignment(
+            finalComplaint.getComplaintId(),
+            null,
+            saved.getDepartmentId(),
+            AuditActorContext.system(),
+            auditReason
+        );
+
+        return buildResponseDTO(finalComplaint, category.getName(), departmentName);
+    }
+    
+    /**
+     * Attach image to an EXISTING complaint.
+     * Use when citizen adds evidence after initial filing.
+     * 
+     * @param complaintId The complaint to attach image to
+     * @param imageBytes Raw image bytes
+     * @param imageMimeType MIME type of image
+     * @return Updated ComplaintResponseDTO
+     */
+    public ComplaintResponseDTO attachImageToComplaint(Long complaintId, byte[] imageBytes, String imageMimeType) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+            .orElseThrow(() -> new ResourceNotFoundException("Complaint not found with id: " + complaintId));
+        
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes cannot be empty");
+        }
+        
+        // Upload to S3
+        String s3Key = s3StorageService.uploadImage(imageBytes, imageMimeType, complaintId);
+        if (s3Key == null) {
+            throw new RuntimeException("Failed to upload image to S3");
+        }
+        
+        // Update complaint with image reference
+        complaint.setImageS3Key(s3Key);
+        complaint.setImageMimeType(imageMimeType);
+        
+        // Analyze image and cache results (async-safe, non-blocking on errors)
+        try {
+            ImageAnalysisResult analysis = imageAnalysisService.analyzeImage(
+                imageBytes, imageMimeType, 
+                complaint.getDescription(), complaint.getLocation()
+            );
+            
+            if (analysis != null) {
+                complaint.setImageAnalysis(analysis.toJson());
+                complaint.setImageAnalyzedAt(LocalDateTime.now());
+                
+                // Upgrade priority if image shows safety hazards
+                if (analysis.suggestsUpgrade() && complaint.getPriority() != Priority.CRITICAL) {
+                    Priority currentPriority = complaint.getPriority();
+                    Priority upgradedPriority = upgradePriority(currentPriority);
+                    
+                    complaint.setPriority(upgradedPriority);
+                    complaint.setAiReasoning(
+                        (complaint.getAiReasoning() != null ? complaint.getAiReasoning() : "") +
+                        " | Image analysis upgraded priority: " + analysis.priorityReason()
+                    );
+                    
+                    log.info("📷 Priority upgraded {} → {} based on image analysis", 
+                             currentPriority, upgradedPriority);
+                }
+            }
+        } catch (Exception e) {
+            // Non-blocking: log but continue
+            log.error("❌ Image analysis failed (non-blocking): {}", e.getMessage());
+        }
+        
+        complaint.setUpdatedTime(LocalDateTime.now());
+        Complaint saved = complaintRepository.save(complaint);
+        
+        // Fetch category and department names
+        String categoryName = complaint.getCategoryId() != null 
+            ? categoryRepository.findById(complaint.getCategoryId()).map(Category::getName).orElse("OTHER")
+            : "OTHER";
+        String departmentName = complaint.getDepartmentId() != null 
+            ? departmentRepository.findById(complaint.getDepartmentId()).map(Department::getName).orElse("Unknown")
+            : "Pending Assignment";
+        
+        return buildResponseDTO(saved, categoryName, departmentName);
+    }
+    
+    /**
+     * Get image analysis results for a complaint.
+     * Returns cached results if available, otherwise returns null.
+     */
+    public Map<String, Object> getImageAnalysisForComplaint(Long complaintId) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+            .orElseThrow(() -> new ResourceNotFoundException("Complaint not found with id: " + complaintId));
+        
+        if (complaint.getImageS3Key() == null) {
+            return null;  // No image attached
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("hasImage", true);
+        result.put("imageS3Key", complaint.getImageS3Key());
+        result.put("imageMimeType", complaint.getImageMimeType());
+        
+        if (complaint.getImageAnalysis() != null) {
+            result.put("hasAnalysis", true);
+            result.put("analysis", complaint.getImageAnalysis());
+            result.put("analyzedAt", complaint.getImageAnalyzedAt());
+        } else {
+            result.put("hasAnalysis", false);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Helper: Upgrade priority by one level
+     */
+    private Priority upgradePriority(Priority current) {
+        if (current == null) return Priority.MEDIUM;
+        return switch (current) {
+            case LOW -> Priority.MEDIUM;
+            case MEDIUM -> Priority.HIGH;
+            case HIGH, CRITICAL -> Priority.CRITICAL;
+        };
     }
 
     /**
@@ -137,6 +405,12 @@ public class ComplaintService {
             staffName = userRepository.findById(complaint.getStaffId())
                 .map(User::getName)
                 .orElse(null);
+        }
+        
+        // Generate presigned URL for image if available
+        String imageUrl = null;
+        if (complaint.getImageS3Key() != null && !complaint.getImageS3Key().isBlank()) {
+            imageUrl = s3StorageService.getPresignedUrl(complaint.getImageS3Key());
         }
 
         return ComplaintResponseDTO.builder()
@@ -154,8 +428,13 @@ public class ComplaintService {
             .slaDeadline(complaint.getSlaDeadline())
             .aiReasoning(complaint.getAiReasoning())
             .aiConfidence(complaint.getAiConfidence())
+            .needsManualRouting(complaint.getNeedsManualRouting())
             .staffId(complaint.getStaffId())
             .staffName(staffName)
+            .imageUrl(imageUrl)
+            .imageMimeType(complaint.getImageMimeType())
+            .imageAnalysis(complaint.getImageAnalysis())
+            .imageAnalyzedAt(complaint.getImageAnalyzedAt())
             .build();
     }
 
@@ -655,7 +934,7 @@ public class ComplaintService {
      */
     @Transactional(readOnly = true)
     public List<Complaint> getComplaintsByCitizen(Long citizenId) {
-        return complaintRepository.findByCitizenUserIdOrderByCreatedTimeDesc(citizenId);
+        return complaintRepository.findByCitizenIdOrderByCreatedTimeDesc(citizenId);
     }
 
     /**
@@ -665,12 +944,12 @@ public class ComplaintService {
     public java.util.Map<String, Object> getCitizenStats(Long citizenId) {
         java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
         
-        stats.put("total", complaintRepository.countByCitizenUserId(citizenId));
-        stats.put("filed", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.FILED));
-        stats.put("inProgress", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.IN_PROGRESS));
-        stats.put("resolved", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.RESOLVED));
-        stats.put("closed", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.CLOSED));
-        stats.put("cancelled", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.CANCELLED));
+        stats.put("total", complaintRepository.countByCitizenId(citizenId));
+        stats.put("filed", complaintRepository.countByCitizenIdAndStatus(citizenId, ComplaintStatus.FILED));
+        stats.put("inProgress", complaintRepository.countByCitizenIdAndStatus(citizenId, ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByCitizenIdAndStatus(citizenId, ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByCitizenIdAndStatus(citizenId, ComplaintStatus.CLOSED));
+        stats.put("cancelled", complaintRepository.countByCitizenIdAndStatus(citizenId, ComplaintStatus.CANCELLED));
         
         // Pending = FILED + IN_PROGRESS
         long pending = (long) stats.get("filed") + (long) stats.get("inProgress");
@@ -684,7 +963,7 @@ public class ComplaintService {
      */
     @Transactional(readOnly = true)
     public List<Complaint> getComplaintsByStaff(Long staffId) {
-        return complaintRepository.findByStaffUserIdOrderByCreatedTimeDesc(staffId);
+        return complaintRepository.findByStaffIdOrderByCreatedTimeDesc(staffId);
     }
 
     /**
@@ -694,10 +973,10 @@ public class ComplaintService {
     public java.util.Map<String, Object> getStaffStats(Long staffId) {
         java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
         
-        stats.put("total", complaintRepository.countByStaffUserId(staffId));
-        stats.put("inProgress", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.IN_PROGRESS));
-        stats.put("resolved", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.RESOLVED));
-        stats.put("closed", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.CLOSED));
+        stats.put("total", complaintRepository.countByStaffId(staffId));
+        stats.put("inProgress", complaintRepository.countByStaffIdAndStatus(staffId, ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByStaffIdAndStatus(staffId, ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByStaffIdAndStatus(staffId, ComplaintStatus.CLOSED));
         
         return stats;
     }
@@ -760,7 +1039,97 @@ public class ComplaintService {
         stats.put("closed", complaintRepository.countByStatus(ComplaintStatus.CLOSED));
         stats.put("cancelled", complaintRepository.countByStatus(ComplaintStatus.CANCELLED));
         stats.put("escalated", complaintRepository.countByEscalationLevelGreaterThan(0));
+        stats.put("pendingManualRouting", complaintRepository.countByNeedsManualRoutingTrue());
         
         return stats;
+    }
+    
+    // ==================== ADMIN MANUAL ROUTING ====================
+    
+    /**
+     * Get all complaints pending manual routing (low AI confidence).
+     * Used by admin to review and assign departments manually.
+     * 
+     * @return List of complaints with needsManualRouting=true
+     */
+    @Transactional(readOnly = true)
+    public List<ComplaintResponseDTO> getComplaintsPendingManualRouting() {
+        List<Complaint> pendingComplaints = complaintRepository.findByNeedsManualRoutingTrueOrderByCreatedTimeDesc();
+        
+        return pendingComplaints.stream()
+            .map(c -> {
+                String categoryName = c.getCategoryId() != null 
+                    ? categoryRepository.findById(c.getCategoryId()).map(Category::getName).orElse("UNKNOWN")
+                    : "UNKNOWN";
+                String departmentName = c.getDepartmentId() != null 
+                    ? departmentRepository.findById(c.getDepartmentId()).map(Department::getName).orElse("UNKNOWN")
+                    : "Pending Assignment";
+                return buildResponseDTO(c, categoryName, departmentName);
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Admin manually routes a complaint to a department.
+     * Clears the needsManualRouting flag and assigns to specified department.
+     * 
+     * @param complaintId The complaint to route
+     * @param departmentId Target department ID
+     * @param adminId The admin performing the routing
+     * @param reason Optional reason for the routing decision
+     * @return Updated complaint response
+     */
+    public ComplaintResponseDTO manualRouteComplaint(Long complaintId, Long departmentId, Long adminId, String reason) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+            .orElseThrow(() -> new ResourceNotFoundException("Complaint not found with id: " + complaintId));
+        
+        Department department = departmentRepository.findById(departmentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Department not found with id: " + departmentId));
+        
+        Long previousDepartmentId = complaint.getDepartmentId();
+        
+        // Update department and clear manual routing flag
+        complaint.setDepartmentId(departmentId);
+        complaint.setNeedsManualRouting(false);
+        complaint.setUpdatedTime(LocalDateTime.now());
+        
+        // Append routing info to AI reasoning
+        String routingNote = String.format(
+            " | MANUAL ROUTING by Admin (ID:%d): Assigned to %s. Reason: %s",
+            adminId, department.getName(), reason != null ? reason : "Admin override"
+        );
+        complaint.setAiReasoning(
+            (complaint.getAiReasoning() != null ? complaint.getAiReasoning() : "") + routingNote
+        );
+        
+        Complaint saved = complaintRepository.save(complaint);
+        
+        // AUDIT: Record manual department assignment
+        auditService.recordDepartmentAssignment(
+            complaintId,
+            previousDepartmentId,
+            departmentId,
+            AuditActorContext.forUser(adminId),
+            "Manual routing by admin. Reason: " + (reason != null ? reason : "Admin override")
+        );
+        
+        log.info("✅ Complaint #{} manually routed to {} by admin {}", 
+                 complaintId, department.getName(), adminId);
+        
+        String categoryName = saved.getCategoryId() != null 
+            ? categoryRepository.findById(saved.getCategoryId()).map(Category::getName).orElse("UNKNOWN")
+            : "UNKNOWN";
+        
+        return buildResponseDTO(saved, categoryName, department.getName());
+    }
+    
+    /**
+     * Count complaints pending manual routing.
+     * 
+     * @return Number of complaints with low AI confidence awaiting admin routing
+     */
+    @Transactional(readOnly = true)
+    public long countPendingManualRouting() {
+        return complaintRepository.countByNeedsManualRoutingTrue();
     }
 }

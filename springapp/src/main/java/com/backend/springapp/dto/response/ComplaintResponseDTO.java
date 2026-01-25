@@ -40,8 +40,17 @@ public class ComplaintResponseDTO {
     // AI transparency
     private String aiReasoning;
     private Double aiConfidence;
+    
+    // Manual routing flag (when AI confidence < 0.7)
+    private Boolean needsManualRouting;
 
     // Assignment (filled later by dept head)
     private Long staffId;
     private String staffName;
+    
+    // Image evidence (NEW)
+    private String imageUrl;        // Presigned S3 URL for viewing (temporary, expires)
+    private String imageMimeType;   // MIME type of the image
+    private String imageAnalysis;   // AI analysis of the image
+    private LocalDateTime imageAnalyzedAt;
 }

@@ -7,6 +7,11 @@
  * - Actions: Update status, add remarks, resolve
  * - Uses shared ComplaintList and DashboardSection components
  * 
+ * RESOLUTION WORKFLOW:
+ * 1. Staff uploads resolution proof via ResolutionProofForm
+ * 2. "Mark as Resolved" button is DISABLED until proof exists
+ * 3. After proof uploaded, staff can mark complaint as RESOLVED
+ * 
  * DATA FLOW:
  * - useComplaints() fetches staff's assigned complaints automatically
  * - Stats derived from actual complaint data
@@ -22,10 +27,11 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button } from "../../components/ui";
-import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { ComplaintList, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid, ResolutionProofForm } from "../../components/common";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
+import { resolutionProofService } from "../../services/api";
 import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
@@ -36,6 +42,7 @@ import {
   AlertTriangle,
   RefreshCw,
   TrendingUp,
+  Upload,
 } from "lucide-react";
 
 // =============================================================================
@@ -88,6 +95,7 @@ const staffMenuItems = [
 const StaffDashboard = () => {
   const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
+  const [selectedComplaintId, setSelectedComplaintId] = useState(null);
   
   // Context and hooks
   const { userId, role, email, name } = useUser();
@@ -101,6 +109,76 @@ const StaffDashboard = () => {
     resolveComplaint,
     updateComplaintState,
   } = useComplaints();
+
+  // ==========================================================================
+  // RESOLUTION PROOF STATE
+  // Track which complaints have proof uploaded
+  // ==========================================================================
+  const [proofStatus, setProofStatus] = useState({}); // { complaintId: true/false }
+  const [proofLoading, setProofLoading] = useState({}); // { complaintId: true/false }
+  const [selectedComplaintForProof, setSelectedComplaintForProof] = useState(null);
+
+  // Check if a complaint has proof (cached or fetch)
+  const checkProofStatus = useCallback(async (complaintId) => {
+    if (proofStatus[complaintId] !== undefined) {
+      return proofStatus[complaintId];
+    }
+    try {
+      const hasProof = await resolutionProofService.hasProof(complaintId);
+      setProofStatus(prev => ({ ...prev, [complaintId]: hasProof }));
+      return hasProof;
+    } catch (err) {
+      console.error('Failed to check proof status:', err);
+      return false;
+    }
+  }, [proofStatus]);
+
+  // Handle proof submission - uploads proof AND resolves the complaint
+  const handleSubmitProof = useCallback(async (proofData) => {
+    const { complaintId, image, description } = proofData;
+    setProofLoading(prev => ({ ...prev, [complaintId]: true }));
+    
+    try {
+      // Step 1: Upload the resolution proof
+      await resolutionProofService.submit(complaintId, { description }, image);
+      setProofStatus(prev => ({ ...prev, [complaintId]: true }));
+      
+      // Step 2: Automatically resolve the complaint after proof upload
+      await resolveComplaint(complaintId);
+      
+      setSelectedComplaintForProof(null);
+      
+      // Step 3: Refresh complaints list to show updated status
+      await refresh();
+      
+      // Step 4: Navigate back to complaints list
+      setSelectedComplaintId(null);
+      setActiveItem('my-complaints');
+    } catch (err) {
+      console.error('Failed to submit proof and resolve:', err);
+      throw err;
+    } finally {
+      setProofLoading(prev => ({ ...prev, [complaintId]: false }));
+    }
+  }, [resolveComplaint, refresh]);
+
+  // Handle resolve with proof guard
+  const handleResolveWithProofCheck = useCallback(async (complaintId) => {
+    const hasProof = await checkProofStatus(complaintId);
+    if (!hasProof) {
+      // Show proof form instead
+      setSelectedComplaintForProof(complaintId);
+      return;
+    }
+    // Proof exists, proceed with resolve
+    try {
+      await resolveComplaint(complaintId);
+      // Refresh complaints list to show updated status
+      await refresh();
+    } catch (err) {
+      console.error('Failed to resolve complaint:', err);
+    }
+  }, [checkProofStatus, resolveComplaint, refresh]);
 
   // ==========================================================================
   // DERIVED DATA
@@ -158,16 +236,13 @@ const StaffDashboard = () => {
   // ==========================================================================
   // ACTION HANDLERS
   // Staff can: resolve complaints, update status, add remarks
+  // NOTE: handleResolveWithProofCheck (above) replaces direct resolveComplaint
   // ==========================================================================
   
-  // Resolve a complaint (mark as fixed)
+  // Resolve a complaint (with proof check)
   const handleResolveComplaint = useCallback(async (complaintId) => {
-    try {
-      await resolveComplaint(complaintId);
-    } catch (err) {
-      console.error('Failed to resolve complaint:', err);
-    }
-  }, [resolveComplaint]);
+    await handleResolveWithProofCheck(complaintId);
+  }, [handleResolveWithProofCheck]);
 
   // Update complaint status (e.g., FILED → IN_PROGRESS)
   const handleUpdateStatus = useCallback(async (complaintId, newStatus) => {
@@ -180,8 +255,12 @@ const StaffDashboard = () => {
 
   // View complaint details (for adding remarks, viewing history)
   const handleViewDetails = useCallback((complaint) => {
-    navigate(`/dashboard/staff/complaints/${complaint.complaintId || complaint.id}`);
-  }, [navigate]);
+    const id = complaint.complaintId || complaint.id;
+    if (id) {
+      setSelectedComplaintId(id);
+      setActiveItem('complaint-detail');
+    }
+  }, []);
 
   // Logout
   const handleLogout = useCallback(async () => {
@@ -227,6 +306,22 @@ const StaffDashboard = () => {
   // ==========================================================================
   const renderContent = () => {
     switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT DETAIL VIEW
+      // -----------------------------------------------------------------------
+      case 'complaint-detail':
+        return (
+          <ComplaintDetailPage
+            complaintId={selectedComplaintId}
+            onResolve={handleResolveComplaint}
+            onBack={() => {
+              setSelectedComplaintId(null);
+              setActiveItem('all-assigned');
+            }}
+            role="staff"
+          />
+        );
+
       // -----------------------------------------------------------------------
       // COMPLAINT LISTS (All Assigned, In Progress, Resolved)
       // -----------------------------------------------------------------------
@@ -426,6 +521,33 @@ const StaffDashboard = () => {
           {error}
         </div>
       )}
+
+      {/* Resolution Proof Form Modal */}
+      {selectedComplaintForProof && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload Resolution Proof
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                You must upload proof before marking this complaint as resolved.
+              </p>
+            </div>
+            <div className="p-4">
+              <ResolutionProofForm
+                complaintId={selectedComplaintForProof}
+                onSubmit={handleSubmitProof}
+                onCancel={() => setSelectedComplaintForProof(null)}
+                isLoading={proofLoading[selectedComplaintForProof]}
+                hasExistingProof={proofStatus[selectedComplaintForProof]}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {renderContent()}
     </DashboardLayout>
   );

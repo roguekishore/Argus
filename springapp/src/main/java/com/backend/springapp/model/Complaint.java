@@ -102,5 +102,45 @@ public class Complaint {
     @Column(columnDefinition = "DECIMAL(3,2)")
     private Double aiConfidence;
     
+    /**
+     * Flag indicating AI confidence was below threshold (0.7)
+     * and complaint needs manual routing by admin.
+     * When true: departmentId is NULL (no department assigned yet).
+     * Admin must manually assign the correct department via routing interface.
+     */
+    @Column(name = "needs_manual_routing", columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private Boolean needsManualRouting = false;
+    
     private Integer citizenSatisfaction;
+
+    // ===== IMAGE EVIDENCE (S3 Storage) =====
+    
+    /**
+     * S3 object key for complaint evidence image (NOT public URL for security)
+     * Example: "complaints/2026/01/complaint-123-evidence.jpg"
+     */
+    @Column(name = "image_s3_key")
+    private String imageS3Key;
+    
+    /**
+     * MIME type of uploaded image (image/jpeg, image/png, etc.)
+     * Required for proper multimodal AI analysis
+     */
+    @Column(name = "image_mime_type")
+    private String imageMimeType;
+    
+    /**
+     * Cached AI image analysis result to avoid repeated Gemini calls
+     * Contains: detected issue, safety risks, verification status
+     * JSON format for structured parsing
+     */
+    @Column(name = "image_analysis", columnDefinition = "TEXT")
+    private String imageAnalysis;
+    
+    /**
+     * Timestamp when image was analyzed by AI
+     * Used to determine if re-analysis is needed
+     */
+    @Column(name = "image_analyzed_at")
+    private LocalDateTime imageAnalyzedAt;
 }

@@ -48,6 +48,7 @@ public class DataInitializer implements CommandLineRunner {
         initializeSLAConfigs();
         initializeSampleStaff();
         initializeCitizenUser();
+        initializeAdminUser();
         initializeSuperAdminUser();
         initializeMunicipalCommissionerUser();
     }
@@ -62,7 +63,10 @@ public class DataInitializer implements CommandLineRunner {
      * 5 - SANITATION
      * 6 - TRAFFIC
      * 7 - PARKS
-     * 8 - ADMIN
+     * 
+     * NOTE: No ADMIN department. Administrators are system-wide users
+     * who don't belong to any specific department. Low-confidence complaints
+     * have NULL departmentId and are manually routed by admins.
      */
     private void initializeDepartments() {
         if (departmentRepository.count() == 0) {
@@ -73,7 +77,8 @@ public class DataInitializer implements CommandLineRunner {
             departmentRepository.save(new Department(5L, "SANITATION", null));
             departmentRepository.save(new Department(6L, "TRAFFIC", null));
             departmentRepository.save(new Department(7L, "PARKS", null));
-            departmentRepository.save(new Department(8L, "ADMIN", null));
+            // NOTE: No ADMIN department - Admins don't belong to a department
+            // Low-confidence complaints have NULL departmentId and are manually routed
             
             System.out.println("✓ Departments initialized successfully");
         }
@@ -152,7 +157,7 @@ public class DataInitializer implements CommandLineRunner {
      */
     private void initializeSLAConfigs() {
         if (slaRepository.count() == 0) {
-            // Fetch departments
+            // Fetch departments (no ADMIN department anymore)
             Department roads = departmentRepository.findById(1L).orElseThrow();
             Department electrical = departmentRepository.findById(2L).orElseThrow();
             Department waterSupply = departmentRepository.findById(3L).orElseThrow();
@@ -160,7 +165,6 @@ public class DataInitializer implements CommandLineRunner {
             Department sanitation = departmentRepository.findById(5L).orElseThrow();
             Department traffic = departmentRepository.findById(6L).orElseThrow();
             Department parks = departmentRepository.findById(7L).orElseThrow();
-            Department admin = departmentRepository.findById(8L).orElseThrow();
 
             // Fetch categories
             Category pothole = categoryRepository.findByName("POTHOLE").orElseThrow();
@@ -182,7 +186,9 @@ public class DataInitializer implements CommandLineRunner {
             slaRepository.save(new SLA(trafficSignals, 5, Priority.MEDIUM, traffic));
             slaRepository.save(new SLA(parkMaintenance, 10, Priority.LOW, parks));
             slaRepository.save(new SLA(electricalDamage, 3, Priority.CRITICAL, electrical));  // Safety!
-            slaRepository.save(new SLA(other, 14, Priority.LOW, admin));  // Catch-all
+            // OTHER category maps to ROADS as default fallback (but typically AI confidence
+            // will be low for OTHER, triggering manual routing anyway)
+            slaRepository.save(new SLA(other, 14, Priority.LOW, roads));
 
             System.out.println("✓ SLA configurations initialized successfully");
         }
@@ -200,6 +206,26 @@ public class DataInitializer implements CommandLineRunner {
             citizen.setUserType(UserType.CITIZEN);
             userRepository.save(citizen);
             System.out.println("✓ Citizen user initialized successfully");
+        }
+    }
+
+    /**
+     * Pre-populate an admin user for testing.
+     * Admin users are system-wide and don't belong to any department.
+     * They handle manual routing of low-confidence AI complaints.
+     */
+    private void initializeAdminUser() {
+        if (userRepository.findByUserType(UserType.ADMIN).isEmpty()) {
+            User admin = new User();
+            admin.setName("System Admin");
+            admin.setEmail("admin@gmail.com");
+            admin.setMobile("9876541111");
+            admin.setPassword(DEFAULT_PASSWORD);
+            admin.setUserType(UserType.ADMIN);
+            // NOTE: No deptId - Admins are system-wide, not department-specific
+            admin.setDeptId(null);
+            userRepository.save(admin);
+            System.out.println("✓ Admin user initialized successfully");
         }
     }
 
@@ -284,11 +310,7 @@ public class DataInitializer implements CommandLineRunner {
             createStaff("Parks Staff 3", "parks3@gmail.com", "9876543703", 7L);
             createDeptHead("Parks Head", "parkshead@gmail.com", "9876543700", 7L);
 
-            // ===== DEPARTMENT 8: ADMIN =====
-            createStaff("Admin Staff 1", "admin1@gmail.com", "9876543801", 8L);
-            createStaff("Admin Staff 2", "admin2@gmail.com", "9876543802", 8L);
-            createStaff("Admin Staff 3", "admin3@gmail.com", "9876543803", 8L);
-            createDeptHead("Admin Head", "adminhead@gmail.com", "9876543800", 8L);
+            // NOTE: No ADMIN department staff - Admins are system-wide users without department
 
             System.out.println("✓ Sample staff and department heads initialized successfully");
         }

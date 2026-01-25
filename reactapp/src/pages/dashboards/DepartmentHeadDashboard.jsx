@@ -22,11 +22,13 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button } from "../../components/ui";
-import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
+import { ComplaintList, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
-import { usersService } from "../../services";
+import { usersService, disputeService } from "../../services";
 import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
@@ -38,6 +40,10 @@ import {
   RefreshCw,
   UserPlus,
   Building,
+  MessageSquareWarning,
+  ThumbsUp,
+  ThumbsDown,
+  Eye,
 } from "lucide-react";
 
 // =============================================================================
@@ -90,6 +96,11 @@ const deptHeadMenuItems = [
         label: "Escalations",
         icon: <AlertTriangle className="h-4 w-4" />,
       },
+      {
+        id: "disputes",
+        label: "Pending Disputes",
+        icon: <MessageSquareWarning className="h-4 w-4" />,
+      },
     ],
   },
   {
@@ -110,6 +121,7 @@ const deptHeadMenuItems = [
 const DepartmentHeadDashboard = () => {
   const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
+  const [selectedComplaintId, setSelectedComplaintId] = useState(null);
   
   // Context and hooks
   const { userId, role, email, name, departmentId } = useUser();
@@ -128,6 +140,11 @@ const DepartmentHeadDashboard = () => {
   // Local state for department staff
   const [departmentStaff, setDepartmentStaff] = useState([]);
   const [unassignedComplaints, setUnassignedComplaints] = useState([]);
+  
+  // Disputes state
+  const [pendingDisputes, setPendingDisputes] = useState([]);
+  const [disputesLoading, setDisputesLoading] = useState(false);
+  const [disputeActionLoading, setDisputeActionLoading] = useState({});
 
   // Fetch department staff for reassignment
   useEffect(() => {
@@ -159,6 +176,27 @@ const DepartmentHeadDashboard = () => {
     fetchUnassigned();
   }, [departmentId, getUnassigned]);
 
+  // Fetch pending disputes
+  const fetchPendingDisputes = useCallback(async () => {
+    setDisputesLoading(true);
+    try {
+      const disputes = await disputeService.getPending();
+      setPendingDisputes(Array.isArray(disputes) ? disputes : []);
+    } catch (err) {
+      console.error('Failed to fetch pending disputes:', err);
+      setPendingDisputes([]);
+    } finally {
+      setDisputesLoading(false);
+    }
+  }, []);
+
+  // Fetch disputes on mount and when navigating to disputes section
+  useEffect(() => {
+    if (activeItem === 'disputes' || activeItem === 'dashboard') {
+      fetchPendingDisputes();
+    }
+  }, [activeItem, fetchPendingDisputes]);
+
   // ==========================================================================
   // DERIVED DATA
   // ==========================================================================
@@ -182,12 +220,12 @@ const DepartmentHeadDashboard = () => {
       icon: <Clock className="h-5 w-5 text-yellow-500" /> 
     },
     { 
-      title: "Escalated", 
-      value: complaints.filter(c => c.escalationLevel > 0).length.toString(), 
-      description: "Needs attention",
-      icon: <AlertTriangle className="h-5 w-5 text-red-500" /> 
+      title: "Pending Disputes", 
+      value: pendingDisputes.length.toString(), 
+      description: "Need your review",
+      icon: <MessageSquareWarning className="h-5 w-5 text-red-500" /> 
     },
-  ], [stats, complaints, unassignedComplaints]);
+  ], [stats, unassignedComplaints, pendingDisputes]);
 
   // Filter complaints based on active menu item
   const filteredComplaints = useMemo(() => {
@@ -218,33 +256,81 @@ const DepartmentHeadDashboard = () => {
   const handleResolveComplaint = useCallback(async (complaintId) => {
     try {
       await resolveComplaint(complaintId);
+      // Refresh complaints list to show updated status
+      await refresh();
     } catch (err) {
       console.error('Failed to resolve complaint:', err);
     }
-  }, [resolveComplaint]);
+  }, [resolveComplaint, refresh]);
 
   // Reassign complaint to different staff
   const handleReassign = useCallback(async (complaint) => {
     // TODO: Open a staff selection modal
     // For now, using a simple prompt
+    const complaintId = complaint.complaintId || complaint.id;
     const staffOptions = departmentStaff.map(s => `${s.id}: ${s.name}`).join('\n');
     const staffId = window.prompt(`Select staff ID to assign:\n${staffOptions}`);
     if (staffId) {
       try {
-        await assignStaff(complaint.id, staffId);
-        // Refresh unassigned list
+        await assignStaff(complaintId, staffId);
+        // Refresh unassigned list and all complaints
         const data = await getUnassigned();
         setUnassignedComplaints(Array.isArray(data) ? data : []);
+        await refresh();
       } catch (err) {
         console.error('Failed to assign staff:', err);
       }
     }
-  }, [departmentStaff, assignStaff, getUnassigned]);
+  }, [departmentStaff, assignStaff, getUnassigned, refresh]);
 
   // View complaint details
   const handleViewDetails = useCallback((complaint) => {
-    navigate(`/dashboard/dept-head/complaints/${complaint.complaintId || complaint.id}`);
-  }, [navigate]);
+    const id = complaint.complaintId || complaint.id;
+    if (id) {
+      setSelectedComplaintId(id);
+      setActiveItem('complaint-detail');
+    }
+  }, []);
+
+  // Approve a dispute - reopen the complaint
+  const handleApproveDispute = useCallback(async (dispute) => {
+    const complaintId = dispute.complaintId;
+    const signoffId = dispute.id;
+    
+    setDisputeActionLoading(prev => ({ ...prev, [signoffId]: true }));
+    try {
+      await disputeService.approve(complaintId, signoffId);
+      // Refresh disputes and complaints
+      await fetchPendingDisputes();
+      refresh();
+    } catch (err) {
+      console.error('Failed to approve dispute:', err);
+      alert('Failed to approve dispute: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDisputeActionLoading(prev => ({ ...prev, [signoffId]: false }));
+    }
+  }, [fetchPendingDisputes, refresh]);
+
+  // Reject a dispute - complaint stays resolved
+  const handleRejectDispute = useCallback(async (dispute) => {
+    const complaintId = dispute.complaintId;
+    const signoffId = dispute.id;
+    
+    const reason = window.prompt('Enter rejection reason:');
+    if (!reason) return;
+    
+    setDisputeActionLoading(prev => ({ ...prev, [signoffId]: true }));
+    try {
+      await disputeService.reject(complaintId, signoffId, reason);
+      // Refresh disputes
+      await fetchPendingDisputes();
+    } catch (err) {
+      console.error('Failed to reject dispute:', err);
+      alert('Failed to reject dispute: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDisputeActionLoading(prev => ({ ...prev, [signoffId]: false }));
+    }
+  }, [fetchPendingDisputes]);
 
   // Logout
   const handleLogout = useCallback(async () => {
@@ -290,6 +376,22 @@ const DepartmentHeadDashboard = () => {
   // ==========================================================================
   const renderContent = () => {
     switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT DETAIL VIEW
+      // -----------------------------------------------------------------------
+      case 'complaint-detail':
+        return (
+          <ComplaintDetailPage
+            complaintId={selectedComplaintId}
+            onResolve={handleResolveComplaint}
+            onBack={() => {
+              setSelectedComplaintId(null);
+              setActiveItem('all-complaints');
+            }}
+            role="dept-head"
+          />
+        );
+
       // -----------------------------------------------------------------------
       // COMPLAINT LISTS
       // -----------------------------------------------------------------------
@@ -385,6 +487,134 @@ const DepartmentHeadDashboard = () => {
         );
 
       // -----------------------------------------------------------------------
+      // PENDING DISPUTES
+      // -----------------------------------------------------------------------
+      case 'disputes':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Pending Disputes"
+              description="Citizens who dispute the resolution of their complaints"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchPendingDisputes}
+                  disabled={disputesLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${disputesLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            {/* Info about disputes */}
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400">
+              <div className="flex items-center gap-2">
+                <MessageSquareWarning className="h-4 w-4" />
+                <span className="font-medium">Dispute Review</span>
+              </div>
+              <p className="text-sm mt-1">
+                <strong>Approve:</strong> Reopens the complaint with escalated priority and stricter SLA | 
+                <strong> Reject:</strong> Complaint stays closed, citizen is notified
+              </p>
+            </div>
+            
+            {disputesLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Loading disputes...</span>
+              </div>
+            ) : pendingDisputes.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground">
+                <MessageSquareWarning className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No pending disputes in your department.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {pendingDisputes.map((dispute) => (
+                  <Card key={dispute.id} className="border-l-4 border-l-orange-500">
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg">
+                            Complaint #{dispute.complaintId}
+                          </CardTitle>
+                          <CardDescription>
+                            Disputed on {new Date(dispute.createdAt).toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </CardDescription>
+                        </div>
+                        <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
+                          Pending Review
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Dispute Reason</p>
+                        <p className="text-sm">{dispute.disputeReason || 'No reason provided'}</p>
+                      </div>
+                      {dispute.feedback && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Additional Feedback</p>
+                          <p className="text-sm">{dispute.feedback}</p>
+                        </div>
+                      )}
+                      {dispute.disputeImageS3Key && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Counter-Proof Image</p>
+                          <Badge variant="secondary">Image attached</Badge>
+                        </div>
+                      )}
+                    </CardContent>
+                    <CardFooter className="flex justify-between gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedComplaintId(dispute.complaintId);
+                          setActiveItem('complaint-detail');
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Complaint
+                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-300 hover:bg-red-50"
+                          onClick={() => handleRejectDispute(dispute)}
+                          disabled={disputeActionLoading[dispute.id]}
+                        >
+                          <ThumbsDown className="h-4 w-4 mr-2" />
+                          Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleApproveDispute(dispute)}
+                          disabled={disputeActionLoading[dispute.id]}
+                        >
+                          <ThumbsUp className="h-4 w-4 mr-2" />
+                          Approve & Reopen
+                        </Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
       // TEAM MANAGEMENT
       // -----------------------------------------------------------------------
       case 'team':
@@ -437,6 +667,27 @@ const DepartmentHeadDashboard = () => {
 
             {/* Stats Grid */}
             <StatsGrid stats={displayStats} />
+
+            {/* Pending Disputes Alert (if any) */}
+            {pendingDisputes.length > 0 && (
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-md dark:bg-orange-900/20 dark:border-orange-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-orange-800 dark:text-orange-400">
+                    <MessageSquareWarning className="h-5 w-5" />
+                    <span className="font-medium">
+                      {pendingDisputes.length} pending dispute{pendingDisputes.length > 1 ? 's' : ''} awaiting your review
+                    </span>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveItem('disputes')}
+                  >
+                    Review Disputes
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Escalation Alert (if any) */}
             {escalatedComplaints.length > 0 && (

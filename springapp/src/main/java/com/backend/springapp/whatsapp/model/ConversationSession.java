@@ -12,6 +12,10 @@ import java.util.List;
 /**
  * Represents a WhatsApp conversation session with a user.
  * Stored in Redis/Database for persistence across messages.
+ * 
+ * PHASE MANAGEMENT:
+ * The `phase` field tracks the current conversation state.
+ * This ensures the AI respects workflow boundaries and doesn't skip steps.
  */
 @Data
 @NoArgsConstructor
@@ -34,8 +38,36 @@ public class ConversationSession {
     // Whether user is registered in system
     private boolean isRegistered;
     
-    // Current conversation state
+    // Current conversation state (DEPRECATED - use phase instead)
     private SessionState state;
+    
+    // ===== NEW: Explicit Conversation Phase =====
+    /**
+     * Current conversation phase - controls what actions are allowed.
+     * This is the PRIMARY state management field.
+     */
+    @Builder.Default
+    private ConversationPhase phase = ConversationPhase.GREETING;
+    
+    /**
+     * Tracks if we've already asked for an image in this complaint flow.
+     * Reset when complaint is filed or flow is cancelled.
+     */
+    @Builder.Default
+    private boolean imagePromptSent = false;
+    
+    /**
+     * Number of times we've asked for registration name.
+     * Used to detect if user is stuck or confused.
+     */
+    @Builder.Default
+    private int registrationAttempts = 0;
+    
+    /**
+     * Timestamp of last registration check from DB.
+     * Prevents repeated DB lookups within same session.
+     */
+    private LocalDateTime lastRegistrationCheck;
     
     // Partial complaint being built (before submission)
     private PartialComplaint partialComplaint;
@@ -59,6 +91,23 @@ public class ConversationSession {
     // Number of clarification attempts (to avoid infinite loops)
     @Builder.Default
     private int clarificationAttempts = 0;
+    
+    // ===== PENDING IMAGE (from current conversation, not yet submitted) =====
+    
+    /**
+     * S3 key of image uploaded during this conversation (awaiting complaint creation)
+     */
+    private String pendingImageS3Key;
+    
+    /**
+     * MIME type of pending image
+     */
+    private String pendingImageMimeType;
+    
+    /**
+     * Raw bytes of pending image (transient, for immediate AI analysis)
+     */
+    private byte[] pendingImageBytes;
     
     /**
      * Partial complaint being built during conversation
@@ -147,7 +196,48 @@ public class ConversationSession {
         this.partialComplaint = null;
         this.activeComplaintId = null;
         this.clarificationAttempts = 0;
+        this.imagePromptSent = false;
+        clearPendingImage();
         // Keep messageHistory for context
+        // Keep phase - it should be set explicitly
+    }
+    
+    /**
+     * Reset complaint flow and return to idle phase.
+     * Call after filing a complaint or cancelling.
+     */
+    public void resetComplaintFlow() {
+        this.partialComplaint = null;
+        this.imagePromptSent = false;
+        clearPendingImage();
+        if (this.isRegistered) {
+            this.phase = ConversationPhase.REGISTERED_IDLE;
+        }
+    }
+    
+    /**
+     * Start a new complaint flow.
+     */
+    public void startComplaintFlow() {
+        this.partialComplaint = new PartialComplaint();
+        this.imagePromptSent = false;
+        this.phase = ConversationPhase.AWAITING_ISSUE_DESCRIPTION;
+    }
+    
+    /**
+     * Clear pending image data after it's been used
+     */
+    public void clearPendingImage() {
+        this.pendingImageS3Key = null;
+        this.pendingImageMimeType = null;
+        this.pendingImageBytes = null;
+    }
+    
+    /**
+     * Check if there's a pending image
+     */
+    public boolean hasPendingImage() {
+        return pendingImageS3Key != null && !pendingImageS3Key.isBlank();
     }
     
     /**

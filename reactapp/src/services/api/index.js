@@ -13,3 +13,8 @@ export { default as escalationService } from './escalationService';
 export { default as chatService } from './chatService';
 export { default as auditService, AUDIT_ACTIONS, ACTOR_TYPES } from './auditService';
 export { default as notificationService, NOTIFICATION_TYPES } from './notificationService';
+
+// Resolution & Dispute services
+export { default as resolutionProofService } from './resolutionProofService';
+export { default as disputeService } from './disputeService';
+export { default as signoffService } from './signoffService';

@@ -225,6 +225,38 @@ export const useComplaints = (options = {}) => {
   }, []);
 
   /**
+   * Create a new complaint with optional image (Citizen action)
+   * @param {Object} complaintData - { subject, description, location }
+   * @param {File|null} imageFile - Optional image file
+   */
+  const createComplaint = useCallback(async (complaintData, imageFile = null) => {
+    if (!userId) {
+      throw new Error('User not logged in');
+    }
+    
+    try {
+      // Use createWithImage endpoint which handles both with/without image
+      const newComplaint = await complaintsService.createWithImage(userId, complaintData, imageFile);
+      
+      // Add to local state
+      setComplaints(prev => [newComplaint, ...prev]);
+      
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        total: (prev.total || 0) + 1,
+        pending: (prev.pending || 0) + 1,
+        filed: (prev.filed || 0) + 1,
+      }));
+      
+      return newComplaint;
+    } catch (err) {
+      console.error('Error creating complaint:', err);
+      throw err;
+    }
+  }, [userId]);
+
+  /**
    * Assign staff to complaint (Dept Head action)
    */
   const assignStaff = useCallback(async (complaintId, staffId) => {
@@ -273,6 +305,7 @@ export const useComplaints = (options = {}) => {
     // Actions
     refresh: fetchComplaints,
     getComplaint,
+    createComplaint,
     closeComplaint,
     cancelComplaint,
     resolveComplaint,

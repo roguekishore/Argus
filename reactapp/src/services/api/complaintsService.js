@@ -23,6 +23,50 @@ const complaintsService = {
   },
 
   /**
+   * Create a new complaint with image for a citizen
+   * POST /api/complaints/citizen/{citizenId}/with-image
+   * @param {string|number} citizenId 
+   * @param {Object} complaintData - { subject, description, location }
+   * @param {File|null} imageFile - Optional image file
+   */
+  createWithImage: (citizenId, complaintData, imageFile = null) => {
+    const formData = new FormData();
+    
+    // Add complaint data as individual form fields (backend expects @RequestParam)
+    formData.append('title', complaintData.subject || '');
+    formData.append('description', complaintData.description || '');
+    formData.append('location', complaintData.location || '');
+    
+    // Add image if provided
+    if (imageFile) {
+      formData.append('image', imageFile);
+    }
+    
+    return apiClient.postFormData(`/complaints/citizen/${citizenId}/with-image`, formData);
+  },
+
+  /**
+   * Attach image to existing complaint
+   * POST /api/complaints/{complaintId}/image
+   * @param {string|number} complaintId
+   * @param {File} imageFile
+   */
+  attachImage: (complaintId, imageFile) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    return apiClient.postFormData(`/complaints/${complaintId}/image`, formData);
+  },
+
+  /**
+   * Get image analysis for a complaint
+   * GET /api/complaints/{complaintId}/image-analysis
+   * @param {string|number} complaintId
+   */
+  getImageAnalysis: (complaintId) => {
+    return apiClient.get(`/complaints/${complaintId}/image-analysis`);
+  },
+
+  /**
    * Get complaint details
    * GET /api/complaints/{complaintId}/details
    * @param {string|number} complaintId 
@@ -278,6 +322,39 @@ const complaintsService = {
    */
   cancel: (complaintId, reason = '') => {
     return apiClient.put(`/complaints/${complaintId}/cancel`, { reason });
+  },
+
+  // ============================================
+  // Admin Manual Routing (Low AI Confidence)
+  // ============================================
+
+  /**
+   * Get complaints pending manual routing (AI confidence < 0.7)
+   * GET /api/complaints/admin/pending-routing
+   * For: ADMIN, SUPER_ADMIN
+   */
+  getPendingRouting: () => {
+    return apiClient.get('/complaints/admin/pending-routing');
+  },
+
+  /**
+   * Get count of complaints pending manual routing
+   * GET /api/complaints/admin/pending-routing/count
+   * For: ADMIN, SUPER_ADMIN
+   */
+  getPendingRoutingCount: () => {
+    return apiClient.get('/complaints/admin/pending-routing/count');
+  },
+
+  /**
+   * Manually route a complaint to a department
+   * PUT /api/complaints/{complaintId}/admin/route
+   * For: ADMIN, SUPER_ADMIN
+   * @param {string|number} complaintId 
+   * @param {Object} routingData - { departmentId, adminId, reason }
+   */
+  manualRoute: (complaintId, routingData) => {
+    return apiClient.put(`/complaints/${complaintId}/admin/route`, routingData);
   },
 };
 

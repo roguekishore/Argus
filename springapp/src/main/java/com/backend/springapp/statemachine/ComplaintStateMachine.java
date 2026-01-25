@@ -68,10 +68,14 @@ public final class ComplaintStateMachine {
             ComplaintStatus.CANCELLED
         ));
         
-        // RESOLVED → CLOSED or CANCELLED
+        // RESOLVED → CLOSED, CANCELLED, or IN_PROGRESS (reopen on dispute approval)
+        // WHY IN_PROGRESS: When a dispute is approved by DEPT_HEAD, the complaint
+        // must be reopened for re-work. This is NOT a normal workflow path -
+        // it requires dispute approval guard logic in StateTransitionService.
         transitions.put(ComplaintStatus.RESOLVED, EnumSet.of(
             ComplaintStatus.CLOSED,
-            ComplaintStatus.CANCELLED
+            ComplaintStatus.CANCELLED,
+            ComplaintStatus.IN_PROGRESS  // Dispute reopen path
         ));
         
         // CLOSED and CANCELLED are terminal states - no outgoing transitions

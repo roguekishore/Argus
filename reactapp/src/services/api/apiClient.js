@@ -265,6 +265,54 @@ const apiClient = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * POST request with FormData (multipart/form-data)
+   * Used for file uploads
+   * @param {string} endpoint 
+   * @param {FormData} formData - FormData object
+   * @returns {Promise<any>}
+   */
+  postFormData: async (endpoint, formData) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    
+    // Get auth headers but remove Content-Type (browser sets it for FormData)
+    const user = getStoredUser();
+    const headers = {};
+    if (user) {
+      headers['X-User-Id'] = user.userId;
+      headers['X-User-Role'] = user.role;
+      if (user.departmentId) {
+        headers['X-Department-Id'] = user.departmentId;
+      }
+    }
+
+    logRequest('POST (FormData)', url, '[FormData]');
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      const data = await handleResponse(response);
+      logResponse('POST (FormData)', url, data);
+      return data;
+    } catch (error) {
+      logError('POST (FormData)', url, error);
+      
+      if (!(error instanceof ApiError)) {
+        throw new ApiError('Network error. Please check your connection.', 0);
+      }
+      
+      if (error.status === 401) {
+        clearAuthData();
+        window.location.href = '/login';
+      }
+      
+      throw error;
+    }
+  },
 };
 
 export default apiClient;

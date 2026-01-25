@@ -83,6 +83,18 @@
 			<version>10.9.2</version>
 		</dependency>
 
+		<!-- AWS SDK v2 for S3 - Image Storage -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<version>2.25.0</version>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>auth</artifactId>
+			<version>2.25.0</version>
+		</dependency>
+
 		<!-- Spring Security -->
 		<!-- <dependency>
 			<groupId>org.springframework.boot</groupId>

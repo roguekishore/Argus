@@ -4,7 +4,11 @@ import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.exception.ComplaintOwnershipException;
 import com.backend.springapp.exception.DepartmentMismatchException;
 import com.backend.springapp.exception.InvalidStateTransitionException;
+import com.backend.springapp.exception.ResolutionProofRequiredException;
+import com.backend.springapp.exception.SignoffRequiredException;
 import com.backend.springapp.exception.UnauthorizedStateTransitionException;
+import com.backend.springapp.repository.CitizenSignoffRepository;
+import com.backend.springapp.repository.ResolutionProofRepository;
 import com.backend.springapp.security.UserContext;
 import com.backend.springapp.security.UserRole;
 import com.backend.springapp.statemachine.ComplaintStateMachine;
@@ -39,6 +43,25 @@ import java.util.Set;
 public class StateTransitionService {
     
     private static final Logger log = LoggerFactory.getLogger(StateTransitionService.class);
+    
+    /**
+     * Repository for checking resolution proof existence.
+     * Used to enforce: IN_PROGRESS → RESOLVED requires proof.
+     */
+    private final ResolutionProofRepository resolutionProofRepository;
+    
+    /**
+     * Repository for checking citizen signoff existence.
+     * Used to enforce: RESOLVED → CLOSED requires citizen acceptance.
+     */
+    private final CitizenSignoffRepository citizenSignoffRepository;
+    
+    public StateTransitionService(
+            ResolutionProofRepository resolutionProofRepository,
+            CitizenSignoffRepository citizenSignoffRepository) {
+        this.resolutionProofRepository = resolutionProofRepository;
+        this.citizenSignoffRepository = citizenSignoffRepository;
+    }
     
     /**
      * Validate and authorize a state transition.
@@ -117,6 +140,36 @@ public class StateTransitionService {
             }
         }
         
+        // ========== STEP 4: Domain Rule Guards ==========
+        // Business rules that require specific prerequisites before transition
+        
+        // 4a. RESOLUTION PROOF GUARD: IN_PROGRESS → RESOLVED
+        // WHY: Staff cannot claim resolution without providing proof of work done.
+        // This prevents "ghost resolutions" where complaints are closed without action.
+        if (currentState == ComplaintStatus.IN_PROGRESS && targetState == ComplaintStatus.RESOLVED) {
+            if (!resolutionProofRepository.existsByComplaintId(complaintId)) {
+                log.warn("Resolution proof required for complaint {}: no proof exists", complaintId);
+                throw new ResolutionProofRequiredException(complaintId);
+            }
+            log.debug("Resolution proof exists for complaint {}, transition allowed", complaintId);
+        }
+        
+        // 4b. CITIZEN SIGNOFF GUARD: RESOLVED → CLOSED (for non-SYSTEM roles)
+        // WHY: Only the citizen who filed the complaint can close it.
+        // This ensures citizen empowerment - resolution isn't complete until they accept.
+        // NOTE: SYSTEM role bypasses this for auto-close after timeout period.
+        if (currentState == ComplaintStatus.RESOLVED && targetState == ComplaintStatus.CLOSED) {
+            if (role != UserRole.SYSTEM) {
+                if (!citizenSignoffRepository.existsByComplaintIdAndIsAcceptedTrue(complaintId)) {
+                    log.warn("Citizen signoff required for complaint {}: no accepted signoff exists", complaintId);
+                    throw new SignoffRequiredException(complaintId);
+                }
+                log.debug("Citizen signoff exists for complaint {}, transition allowed", complaintId);
+            } else {
+                log.info("SYSTEM role closing complaint {} - signoff check bypassed (auto-close)", complaintId);
+            }
+        }
+        
         // ========== All validations passed ==========
         log.info("State transition validated for complaint {}: {} -> {} by {}",
             complaintId, currentState, targetState, userContext);
@@ -173,6 +226,11 @@ public class StateTransitionService {
      * Check if a specific transition is possible (dry run).
      * Does not throw exceptions - returns boolean.
      * 
+     * NOTE: This method requires a real complaintId to check proof/signoff guards.
+     * When using dummy ID (0L), guard checks will fail for transitions requiring
+     * ResolutionProof or CitizenSignoff. Use with caution.
+     * 
+     * @param complaintId           The complaint ID (needed for guard checks)
      * @param currentState          Current state
      * @param targetState           Target state
      * @param userContext           User context
@@ -181,6 +239,7 @@ public class StateTransitionService {
      * @return true if the transition would succeed
      */
     public boolean canTransition(
+            Long complaintId,
             ComplaintStatus currentState,
             ComplaintStatus targetState,
             UserContext userContext,
@@ -190,7 +249,7 @@ public class StateTransitionService {
         try {
             // Attempt validation but don't need the result
             validateAndAuthorize(
-                0L, // Dummy ID for dry run
+                complaintId,
                 currentState,
                 targetState,
                 userContext,
@@ -201,7 +260,9 @@ public class StateTransitionService {
         } catch (InvalidStateTransitionException | 
                  UnauthorizedStateTransitionException |
                  ComplaintOwnershipException |
-                 DepartmentMismatchException e) {
+                 DepartmentMismatchException |
+                 ResolutionProofRequiredException |
+                 SignoffRequiredException e) {
             return false;
         }
     }

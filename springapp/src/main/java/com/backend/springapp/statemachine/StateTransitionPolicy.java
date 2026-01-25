@@ -88,6 +88,16 @@ public final class StateTransitionPolicy {
             EnumSet.of(UserRole.CITIZEN, UserRole.ADMIN)
         );
         
+        // RESOLVED → IN_PROGRESS: DEPT_HEAD only (dispute reopen)
+        // WHY DEPT_HEAD only: Reopening a complaint is a significant action that
+        // requires supervisory approval. When a citizen disputes a resolution,
+        // a DEPT_HEAD must review the dispute evidence and approve the reopen.
+        // This prevents frivolous reopens and maintains accountability.
+        permissions.put(
+            new TransitionKey(ComplaintStatus.RESOLVED, ComplaintStatus.IN_PROGRESS),
+            EnumSet.of(UserRole.DEPT_HEAD)
+        );
+        
         TRANSITION_PERMISSIONS = Collections.unmodifiableMap(permissions);
     }
     
