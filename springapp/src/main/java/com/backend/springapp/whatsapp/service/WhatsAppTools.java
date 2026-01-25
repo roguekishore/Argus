@@ -91,11 +91,39 @@ public class WhatsAppTools {
             Double latitude,
             Double longitude
     ) {
+        // Delegate to the method with image support, passing null for image params
+        return createComplaintWithImage(citizenId, title, description, location, latitude, longitude, null, null);
+    }
+    
+    /**
+     * Create a new complaint with optional image evidence.
+     * 
+     * EXTENDED to support WhatsApp image uploads:
+     * - If imageS3Key is provided, it's attached to the complaint
+     * - Image analysis is performed separately by the agent
+     */
+    public ComplaintResult createComplaintWithImage(
+            Long citizenId,
+            String title,
+            String description,
+            String location,
+            Double latitude,
+            Double longitude,
+            String imageS3Key,
+            String imageMimeType
+    ) {
         try {
             Complaint complaint = new Complaint();
             complaint.setTitle(title);
             complaint.setDescription(description);
             complaint.setLocation(location);
+            
+            // Set image if provided
+            if (imageS3Key != null && !imageS3Key.isBlank()) {
+                complaint.setImageS3Key(imageS3Key);
+                complaint.setImageMimeType(imageMimeType);
+                log.info("📷 Attaching image to complaint: S3Key={}", imageS3Key);
+            }
             
             // Set citizen
             User citizen = userRepository.findById(citizenId).orElse(null);
@@ -130,7 +158,7 @@ public class WhatsAppTools {
      * Get all complaints for a user
      */
     public List<ComplaintSummary> listUserComplaints(Long citizenId) {
-        List<Complaint> complaints = complaintRepository.findByCitizenUserIdOrderByCreatedTimeDesc(citizenId);
+        List<Complaint> complaints = complaintRepository.findByCitizenIdOrderByCreatedTimeDesc(citizenId);
         
         return complaints.stream()
             .limit(10) // Show last 10

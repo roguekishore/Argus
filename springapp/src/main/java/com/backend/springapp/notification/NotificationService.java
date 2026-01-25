@@ -379,6 +379,42 @@ public class NotificationService {
                 recipientId, NotificationType.SLA_WARNING, title, message,
                 complaintId, link, 120); // 2 hour deduplication window
     }
+    
+    /**
+     * Send a generic notification with custom type and message.
+     * 
+     * Flexible method for notifications that don't fit the specific helpers.
+     * Used for:
+     * - Resolution progress updates
+     * - Dispute notifications
+     * - Custom system messages
+     * 
+     * @param recipientId    User to notify
+     * @param complaintId    Related complaint (nullable)
+     * @param typeName       Notification type as string (will be converted to enum)
+     * @param title          Notification title
+     * @param message        Notification message
+     * @return Created notification, or null if failed
+     */
+    public Notification notifyGeneric(
+            Long recipientId,
+            Long complaintId,
+            String typeName,
+            String title,
+            String message) {
+        
+        NotificationType type;
+        try {
+            type = NotificationType.valueOf(typeName.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown notification type: {}, using GENERIC", typeName);
+            type = NotificationType.GENERIC;
+        }
+        
+        String link = complaintId != null ? "/complaints/" + complaintId : null;
+        
+        return send(recipientId, type, title, message, complaintId, link);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // HELPERS

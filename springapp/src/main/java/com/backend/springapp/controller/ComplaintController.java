@@ -8,10 +8,13 @@ import com.backend.springapp.model.Complaint;
 import com.backend.springapp.service.ComplaintService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.validation.Valid;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +36,115 @@ public class ComplaintController {
     public ResponseEntity<ComplaintResponseDTO> createComplaint(@RequestBody Complaint complaint, @PathVariable Long citizenId) {
         ComplaintResponseDTO created = complaintService.createComplaint(complaint, citizenId);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
+    }
+
+    /**
+     * Create a new complaint WITH image evidence (filed by citizen via frontend).
+     * 
+     * IMAGE HANDLING:
+     * - Image is uploaded to AWS S3 (not stored in database)
+     * - Only the S3 object key is stored with the complaint
+     * - Image is analyzed by Gemini 3 Pro for verification
+     * - Analysis results affect priority/urgency if applicable
+     * 
+     * POST /api/complaints/citizen/{citizenId}/with-image
+     * Content-Type: multipart/form-data
+     * 
+     * @param citizenId The citizen filing the complaint
+     * @param title Complaint title
+     * @param description Detailed description
+     * @param location Where the issue is located
+     * @param image Optional evidence image (JPEG, PNG, max 10MB recommended)
+     * @return ComplaintResponseDTO with AI analysis and image analysis results
+     */
+    @PostMapping(value = "/citizen/{citizenId}/with-image", 
+                 consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ComplaintResponseDTO> createComplaintWithImage(
+            @PathVariable Long citizenId,
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam("location") String location,
+            @RequestParam(value = "image", required = false) MultipartFile image) {
+        
+        try {
+            // Build complaint from form data
+            Complaint complaint = new Complaint();
+            complaint.setTitle(title);
+            complaint.setDescription(description);
+            complaint.setLocation(location);
+            
+            // Extract image data if present
+            byte[] imageBytes = null;
+            String mimeType = null;
+            
+            if (image != null && !image.isEmpty()) {
+                imageBytes = image.getBytes();
+                mimeType = image.getContentType();
+            }
+            
+            // Create complaint with optional image
+            ComplaintResponseDTO created = complaintService.createComplaintWithImage(
+                complaint, citizenId, imageBytes, mimeType
+            );
+            
+            return new ResponseEntity<>(created, HttpStatus.CREATED);
+            
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(null);
+        }
+    }
+
+    /**
+     * Upload/attach image to an EXISTING complaint.
+     * Use this when citizen wants to add evidence after initial filing.
+     * 
+     * POST /api/complaints/{complaintId}/image
+     * Content-Type: multipart/form-data
+     * 
+     * @param complaintId The complaint to attach image to
+     * @param image Evidence image file
+     * @return Updated complaint with image analysis
+     */
+    @PostMapping(value = "/{complaintId}/image", 
+                 consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ComplaintResponseDTO> attachImageToComplaint(
+            @PathVariable Long complaintId,
+            @RequestParam("image") MultipartFile image) {
+        
+        try {
+            if (image == null || image.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            
+            byte[] imageBytes = image.getBytes();
+            String mimeType = image.getContentType();
+            
+            ComplaintResponseDTO updated = complaintService.attachImageToComplaint(
+                complaintId, imageBytes, mimeType
+            );
+            
+            return ResponseEntity.ok(updated);
+            
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    /**
+     * Get image analysis results for a complaint.
+     * GET /api/complaints/{complaintId}/image-analysis
+     * 
+     * @param complaintId The complaint ID
+     * @return Image analysis results (cached) or null if no image
+     */
+    @GetMapping("/{complaintId}/image-analysis")
+    public ResponseEntity<Map<String, Object>> getImageAnalysis(@PathVariable Long complaintId) {
+        Map<String, Object> analysis = complaintService.getImageAnalysisForComplaint(complaintId);
+        if (analysis == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(analysis);
     }
 
     /**
@@ -364,5 +476,67 @@ public class ComplaintController {
         );
         
         return ResponseEntity.ok(result);
+    }
+    
+    // ==================== ADMIN MANUAL ROUTING ====================
+    
+    /**
+     * Get all complaints pending manual routing.
+     * These are complaints where AI confidence was below 0.7 threshold.
+     * 
+     * GET /api/complaints/admin/pending-routing
+     * 
+     * @return List of complaints needing admin review and manual department assignment
+     */
+    @GetMapping("/admin/pending-routing")
+    public ResponseEntity<List<ComplaintResponseDTO>> getComplaintsPendingManualRouting() {
+        List<ComplaintResponseDTO> pendingComplaints = complaintService.getComplaintsPendingManualRouting();
+        return ResponseEntity.ok(pendingComplaints);
+    }
+    
+    /**
+     * Get count of complaints pending manual routing.
+     * Useful for admin dashboard badges.
+     * 
+     * GET /api/complaints/admin/pending-routing/count
+     * 
+     * @return Count of complaints needing manual routing
+     */
+    @GetMapping("/admin/pending-routing/count")
+    public ResponseEntity<Map<String, Long>> getPendingRoutingCount() {
+        long count = complaintService.countPendingManualRouting();
+        return ResponseEntity.ok(Map.of("pendingCount", count));
+    }
+    
+    /**
+     * Admin manually routes a complaint to a department.
+     * Clears the low-confidence flag and assigns to specified department.
+     * 
+     * PUT /api/complaints/{complaintId}/admin/route
+     * 
+     * REQUEST BODY:
+     * {
+     *   "departmentId": 3,
+     *   "adminId": 100,
+     *   "reason": "Complaint clearly belongs to ROADS department based on description"
+     * }
+     * 
+     * @param complaintId The complaint to route
+     * @param request Contains departmentId, adminId, and optional reason
+     * @return Updated complaint with new department assignment
+     */
+    @PutMapping("/{complaintId}/admin/route")
+    public ResponseEntity<ComplaintResponseDTO> manualRouteComplaint(
+            @PathVariable Long complaintId,
+            @RequestBody Map<String, Object> request) {
+        
+        Long departmentId = Long.valueOf(request.get("departmentId").toString());
+        Long adminId = Long.valueOf(request.get("adminId").toString());
+        String reason = request.get("reason") != null ? request.get("reason").toString() : null;
+        
+        ComplaintResponseDTO routed = complaintService.manualRouteComplaint(
+                complaintId, departmentId, adminId, reason);
+        
+        return ResponseEntity.ok(routed);
     }
 }

@@ -65,5 +65,53 @@ public enum NotificationType {
      * Sent to: Citizen who filed the complaint
      * Triggers: State change to CLOSED
      */
-    COMPLAINT_CLOSED
+    COMPLAINT_CLOSED,
+    
+    /**
+     * Resolution progress update.
+     * Sent to: Citizen who filed the complaint
+     * Triggers: Staff submits resolution proof
+     */
+    RESOLUTION_PROGRESS,
+    
+    /**
+     * Resolution disputed by citizen.
+     * Sent to: Staff assigned to the complaint
+     * Triggers: Citizen rejects resolution
+     */
+    RESOLUTION_DISPUTED,
+    
+    /**
+     * Dispute received from citizen (pending review).
+     * Sent to: Staff assigned to the complaint, Department Head
+     * Triggers: Citizen files a dispute with counter-proof
+     */
+    DISPUTE_RECEIVED,
+    
+    /**
+     * Dispute approved by department head.
+     * Sent to: Citizen who filed the dispute
+     * Triggers: DEPT_HEAD approves dispute, complaint reopens
+     */
+    DISPUTE_APPROVED,
+    
+    /**
+     * Dispute rejected by department head.
+     * Sent to: Citizen who filed the dispute
+     * Triggers: DEPT_HEAD rejects dispute
+     */
+    DISPUTE_REJECTED,
+    
+    /**
+     * Complaint reopened after dispute approval.
+     * Sent to: Staff assigned to the complaint
+     * Triggers: Complaint transitions back to IN_PROGRESS after dispute
+     */
+    COMPLAINT_REOPENED,
+    
+    /**
+     * Generic notification type.
+     * Used for notifications that don't fit other categories.
+     */
+    GENERIC
 }

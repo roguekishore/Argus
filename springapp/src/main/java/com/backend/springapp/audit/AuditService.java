@@ -309,6 +309,59 @@ public class AuditService {
                 actor,
                 reason);
     }
+    
+    /**
+     * Record a generic audit action for any entity type.
+     * 
+     * This is a flexible method for auditing actions that don't fit
+     * the specific helper methods above. Use for:
+     * - Resolution proof submissions
+     * - Citizen signoffs (accept/dispute)
+     * - Other custom actions
+     * 
+     * @param entityTypeName The entity type as a string (will be converted to enum)
+     * @param entityId       ID of the entity
+     * @param actionName     Action name as a string (will be converted to enum)
+     * @param oldValue       Previous value (nullable)
+     * @param newValue       New value
+     * @param actor          Actor context (USER or SYSTEM)
+     * @param reason         Human-readable reason
+     * @return The created AuditLog
+     */
+    public AuditLog recordGenericAction(
+            String entityTypeName,
+            Long entityId,
+            String actionName,
+            String oldValue,
+            String newValue,
+            AuditActorContext actor,
+            String reason) {
+        
+        AuditEntityType entityType;
+        try {
+            entityType = AuditEntityType.valueOf(entityTypeName.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown entity type: {}, using COMPLAINT as fallback", entityTypeName);
+            entityType = AuditEntityType.COMPLAINT;
+        }
+        
+        AuditAction action;
+        try {
+            action = AuditAction.valueOf(actionName.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown action: {}, using STATE_CHANGE as fallback", actionName);
+            action = AuditAction.STATE_CHANGE;
+        }
+        
+        return record(
+                entityType,
+                entityId != null ? entityId.toString() : "0",
+                action,
+                oldValue,
+                newValue,
+                actor,
+                reason);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // HELPER METHODS

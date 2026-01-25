@@ -16,6 +16,7 @@ import com.backend.springapp.dto.response.EscalationEventDTO;
 import com.backend.springapp.dto.response.OverdueComplaintDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.EscalationLevel;
+import com.backend.springapp.enums.Priority;
 import com.backend.springapp.enums.UserType;
 import com.backend.springapp.escalation.EscalationEvaluationService.EscalationResult;
 import com.backend.springapp.model.Complaint;
@@ -207,15 +208,56 @@ public class EscalationService {
     }
 
     /**
-     * Updates the complaint's escalation level.
+     * Updates the complaint's escalation level and priority.
      * Only increases, never decreases.
+     * 
+     * Priority Escalation Rules (per grievance_redressal_48hr.md):
+     * - L0 → L1: Priority up 1 level (LOW→MEDIUM, MEDIUM→HIGH, HIGH→CRITICAL)
+     * - L1 → L2: Priority = CRITICAL
      */
     private void updateComplaintEscalationLevel(Complaint complaint, EscalationLevel newLevel) {
         Integer currentLevel = complaint.getEscalationLevel();
         if (currentLevel == null || newLevel.getLevel() > currentLevel) {
             complaint.setEscalationLevel(newLevel.getLevel());
+            
+            // Upgrade priority based on escalation level
+            Priority upgradedPriority = upgradePriorityForEscalation(complaint.getPriority(), newLevel);
+            if (upgradedPriority != complaint.getPriority()) {
+                Priority oldPriority = complaint.getPriority();
+                complaint.setPriority(upgradedPriority);
+                log.info("📈 Priority upgraded {} → {} due to escalation to {}",
+                        oldPriority, upgradedPriority, newLevel.getDisplayName());
+            }
+            
             complaintRepository.save(complaint);
         }
+    }
+
+    /**
+     * Determines the upgraded priority based on escalation level.
+     * 
+     * Rules:
+     * - L1 escalation: Priority up 1 level
+     * - L2 escalation: Priority = CRITICAL
+     * 
+     * @param currentPriority Current complaint priority
+     * @param escalationLevel The new escalation level
+     * @return The upgraded priority
+     */
+    private Priority upgradePriorityForEscalation(Priority currentPriority, EscalationLevel escalationLevel) {
+        if (currentPriority == null) {
+            currentPriority = Priority.MEDIUM;
+        }
+        
+        return switch (escalationLevel) {
+            case L0 -> currentPriority; // No change for L0
+            case L1 -> switch (currentPriority) {
+                case LOW -> Priority.MEDIUM;
+                case MEDIUM -> Priority.HIGH;
+                case HIGH, CRITICAL -> Priority.CRITICAL;
+            };
+            case L2 -> Priority.CRITICAL; // Always CRITICAL for L2
+        };
     }
 
     /**

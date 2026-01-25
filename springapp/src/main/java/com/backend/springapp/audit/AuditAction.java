@@ -61,5 +61,23 @@ public enum AuditAction {
      * - System-wide suspensions (holidays, maintenance)
      * - Department-specific suspensions
      */
-    SUSPENSION
+    SUSPENSION,
+    
+    /**
+     * Generic create action.
+     * Used when a new entity is created.
+     */
+    CREATE,
+    
+    /**
+     * Generic accept action.
+     * Used when something is accepted/approved.
+     */
+    ACCEPT,
+    
+    /**
+     * Generic dispute/reject action.
+     * Used when something is disputed or rejected.
+     */
+    DISPUTE
 }

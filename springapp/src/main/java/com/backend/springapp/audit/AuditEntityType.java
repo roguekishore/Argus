@@ -61,5 +61,19 @@ public enum AuditEntityType {
      * Future-proof for tracking suspension records.
      * Suspensions may pause SLA clocks or system operations.
      */
-    SUSPENSION
+    SUSPENSION,
+    
+    /**
+     * Resolution proof entity.
+     * Tracks proof submissions by staff before resolving complaints.
+     * Critical for enforcing proof-before-resolution rule.
+     */
+    RESOLUTION_PROOF,
+    
+    /**
+     * Citizen signoff entity.
+     * Tracks citizen acceptance/rejection of resolutions.
+     * Critical for enforcing citizen-only closure rule.
+     */
+    CITIZEN_SIGNOFF
 }

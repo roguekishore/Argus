@@ -173,11 +173,13 @@ const ComplaintCard = ({
       });
     }
 
-    // Reassign - dept head can reassign
+    // Reassign/Assign - dept head can assign/reassign
     if (onReassign && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.state)) {
+      // Show "Assign" if no staff assigned, "Reassign" if already assigned
+      const isUnassigned = !complaint.staffId && !complaint.assignedStaff;
       available.push({
         key: 'reassign',
-        label: 'Reassign',
+        label: isUnassigned ? 'Assign' : 'Reassign',
         icon: null,
         variant: 'outline',
         onClick: () => onReassign(complaint),

@@ -7,6 +7,11 @@
  * - Uses shared ComplaintList and DashboardSection components
  * - Role-specific actions (close, cancel, rate) passed as props to shared components
  * 
+ * RESOLUTION SIGNOFF WORKFLOW:
+ * 1. Citizen sees RESOLVED complaint
+ * 2. Can Accept (with rating) → Closes complaint
+ * 3. Can Dispute (with counter-proof) → Reopens if approved by dept head
+ * 
  * DATA FLOW:
  * - useComplaints() fetches citizen's complaints automatically
  * - Stats derived from actual complaint data
@@ -22,10 +27,11 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button } from "../../components/ui";
-import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { ComplaintList, ComplaintForm, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid, CitizenSignoffForm } from "../../components/common";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
+import { signoffService, disputeService } from "../../services/api";
 import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
@@ -36,6 +42,7 @@ import {
   User,
   HelpCircle,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 // =============================================================================
@@ -103,20 +110,90 @@ const citizenMenuItems = [
 const CitizenDashboard = () => {
   const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
+  const [selectedComplaintId, setSelectedComplaintId] = useState(null);
   
   // Context and hooks
-  const { user, role } = useUser();
+  const { user, role, userId } = useUser();
   const { logout } = useAuth();
   const { 
     complaints, 
     stats, 
     isLoading, 
     error,
+    createComplaint,
     closeComplaint, 
     cancelComplaint,
     rateComplaint,
     refresh 
   } = useComplaints();
+
+  // Loading state for complaint form submission
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // ==========================================================================
+  // SIGNOFF/DISPUTE STATE
+  // Track which complaint is being signed off or disputed
+  // ==========================================================================
+  const [selectedComplaintForSignoff, setSelectedComplaintForSignoff] = useState(null);
+  const [signoffLoading, setSignoffLoading] = useState(false);
+
+  // Handle accept/close via signoff service
+  const handleAcceptResolution = useCallback(async (signoffData) => {
+    setSignoffLoading(true);
+    try {
+      await signoffService.accept(
+        signoffData.complaintId,
+        signoffData.rating,
+        signoffData.feedback
+      );
+      setSelectedComplaintForSignoff(null);
+      
+      // Refresh to show updated status
+      await refresh();
+      
+      // Navigate back to complaints list
+      setSelectedComplaintId(null);
+      setActiveItem('all-complaints');
+    } catch (err) {
+      console.error('Failed to accept resolution:', err);
+      throw err;
+    } finally {
+      setSignoffLoading(false);
+    }
+  }, [refresh]);
+
+  // Handle dispute submission
+  const handleSubmitDispute = useCallback(async (disputeData) => {
+    setSignoffLoading(true);
+    try {
+      await disputeService.submit(
+        disputeData.complaintId,
+        {
+          disputeReason: disputeData.disputeReason,
+          feedback: disputeData.feedback,
+        },
+        disputeData.counterProofImage
+      );
+      setSelectedComplaintForSignoff(null);
+      
+      // Refresh to show updated status
+      await refresh();
+      
+      // Navigate back to complaints list
+      setSelectedComplaintId(null);
+      setActiveItem('all-complaints');
+    } catch (err) {
+      console.error('Failed to submit dispute:', err);
+      throw err;
+    } finally {
+      setSignoffLoading(false);
+    }
+  }, [refresh]);
+
+  // Open signoff form for a resolved complaint
+  const handleOpenSignoff = useCallback((complaintId) => {
+    setSelectedComplaintForSignoff(complaintId);
+  }, []);
 
   // ==========================================================================
   // DERIVED DATA
@@ -171,14 +248,11 @@ const CitizenDashboard = () => {
   // These are passed to ComplaintCard/ComplaintList via props
   // ==========================================================================
   
-  // Close a resolved complaint (citizen confirms resolution)
-  const handleCloseComplaint = useCallback(async (complaintId) => {
-    try {
-      await closeComplaint(complaintId);
-    } catch (err) {
-      console.error('Failed to close complaint:', err);
-    }
-  }, [closeComplaint]);
+  // Close/Signoff a resolved complaint - opens the signoff form
+  const handleCloseComplaint = useCallback((complaintId) => {
+    // Open the signoff form instead of direct close
+    handleOpenSignoff(complaintId);
+  }, [handleOpenSignoff]);
 
   // Cancel a complaint (citizen decides not to proceed)
   const handleCancelComplaint = useCallback(async (complaintId) => {
@@ -206,8 +280,24 @@ const CitizenDashboard = () => {
 
   // View complaint details
   const handleViewDetails = useCallback((complaint) => {
-    navigate(`/dashboard/citizen/complaints/${complaint.id}`);
-  }, [navigate]);
+    const id = complaint.complaintId || complaint.id;
+    if (id) {
+      setSelectedComplaintId(id);
+      setActiveItem('complaint-detail');
+    }
+  }, []);
+
+  // Create new complaint with optional image
+  const handleCreateComplaint = useCallback(async (complaintData, imageFile) => {
+    setIsSubmitting(true);
+    try {
+      await createComplaint(complaintData, imageFile);
+      // Stay on the form to let user see success message
+      // They can file another or navigate away
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [createComplaint]);
 
   // Logout
   const handleLogout = useCallback(async () => {
@@ -255,17 +345,41 @@ const CitizenDashboard = () => {
   const renderContent = () => {
     switch (activeItem) {
       // -----------------------------------------------------------------------
+      // COMPLAINT DETAIL VIEW
+      // -----------------------------------------------------------------------
+      case 'complaint-detail':
+        return (
+          <ComplaintDetailPage
+            complaintId={selectedComplaintId}
+            onClose={handleCloseComplaint}
+            onCancel={handleCancelComplaint}
+            onRate={handleRateComplaint}
+            onAcceptResolution={handleAcceptResolution}
+            onSubmitDispute={handleSubmitDispute}
+            onBack={() => {
+              setSelectedComplaintId(null);
+              setActiveItem('all-complaints');
+            }}
+            role="citizen"
+          />
+        );
+
+      // -----------------------------------------------------------------------
       // NEW COMPLAINT FORM
       // -----------------------------------------------------------------------
       case 'new-complaint':
         return (
-          <DashboardSection
-            title="File New Complaint"
-            description="Submit a new grievance for resolution"
-          >
-            {/* TODO: Integrate ComplaintForm component here */}
-            <p className="text-muted-foreground">Complaint form will be rendered here.</p>
-          </DashboardSection>
+          <div className="space-y-6">
+            <PageHeader
+              title="File New Complaint"
+              description="Submit a new grievance for resolution. You can optionally attach an image as evidence."
+            />
+            <ComplaintForm
+              onSubmit={handleCreateComplaint}
+              onCancel={() => setActiveItem('dashboard')}
+              isLoading={isSubmitting}
+            />
+          </div>
         );
 
       // -----------------------------------------------------------------------
@@ -430,6 +544,38 @@ const CitizenDashboard = () => {
           {error}
         </div>
       )}
+
+      {/* Citizen Signoff Modal (Accept/Dispute) */}
+      {selectedComplaintForSignoff && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Review Resolution</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complaint #{selectedComplaintForSignoff}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedComplaintForSignoff(null)}
+              >
+                ✕
+              </Button>
+            </div>
+            <div className="p-4">
+              <CitizenSignoffForm
+                complaintId={selectedComplaintForSignoff}
+                onAccept={handleAcceptResolution}
+                onDispute={handleSubmitDispute}
+                isLoading={signoffLoading}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {renderContent()}
     </DashboardLayout>
   );

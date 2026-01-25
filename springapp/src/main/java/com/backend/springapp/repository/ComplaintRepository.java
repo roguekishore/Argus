@@ -16,7 +16,7 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     // ==================== CITIZEN QUERIES ====================
     
     // Find complaints by citizen ID, ordered by most recent first
-    List<Complaint> findByCitizenUserIdOrderByCreatedTimeDesc(Long citizenId);
+    List<Complaint> findByCitizenIdOrderByCreatedTimeDesc(Long citizenId);
     
     // Find complaints by citizen phone number
     List<Complaint> findByCitizenMobileOrderByCreatedTimeDesc(String mobile);
@@ -24,10 +24,10 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     // ==================== STAFF QUERIES ====================
     
     // Find complaints assigned to a specific staff member
-    List<Complaint> findByStaffUserIdOrderByCreatedTimeDesc(Long staffId);
+    List<Complaint> findByStaffIdOrderByCreatedTimeDesc(Long staffId);
     
     // Find complaints assigned to staff with specific status
-    List<Complaint> findByStaffUserIdAndStatusOrderByCreatedTimeDesc(Long staffId, ComplaintStatus status);
+    List<Complaint> findByStaffIdAndStatusOrderByCreatedTimeDesc(Long staffId, ComplaintStatus status);
     
     // ==================== DEPARTMENT QUERIES ====================
     
@@ -57,15 +57,23 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     @Query("SELECT c FROM Complaint c WHERE c.escalationLevel > 0 ORDER BY c.escalationLevel DESC, c.createdTime DESC")
     List<Complaint> findEscalatedComplaints();
     
+    // ==================== MANUAL ROUTING QUERIES ====================
+    
+    // Find complaints needing manual routing (low AI confidence)
+    List<Complaint> findByNeedsManualRoutingTrueOrderByCreatedTimeDesc();
+    
+    // Count complaints needing manual routing
+    long countByNeedsManualRoutingTrue();
+
     // ==================== COUNT QUERIES (for stats) ====================
     
-    long countByCitizenUserId(Long citizenId);
+    long countByCitizenId(Long citizenId);
     
-    long countByCitizenUserIdAndStatus(Long citizenId, ComplaintStatus status);
+    long countByCitizenIdAndStatus(Long citizenId, ComplaintStatus status);
     
-    long countByStaffUserId(Long staffId);
+    long countByStaffId(Long staffId);
     
-    long countByStaffUserIdAndStatus(Long staffId, ComplaintStatus status);
+    long countByStaffIdAndStatus(Long staffId, ComplaintStatus status);
     
     long countByDepartmentId(Long departmentId);
     
