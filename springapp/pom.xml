@@ -76,6 +76,13 @@
 			<version>7.0.5.Final</version>
 		</dependency>
 
+		<!-- Twilio SDK for WhatsApp -->
+		<dependency>
+			<groupId>com.twilio.sdk</groupId>
+			<artifactId>twilio</artifactId>
+			<version>10.9.2</version>
+		</dependency>
+
 		<!-- Spring Security -->
 		<!-- <dependency>
 			<groupId>org.springframework.boot</groupId>
