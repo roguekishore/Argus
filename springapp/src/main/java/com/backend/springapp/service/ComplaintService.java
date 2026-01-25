@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.backend.springapp.dto.response.ComplaintResponseDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.exception.ResourceNotFoundException;
@@ -20,6 +21,7 @@ import com.backend.springapp.repository.ComplaintRepository;
 import com.backend.springapp.repository.DepartmentRepository;
 import com.backend.springapp.repository.SLARepository;
 import com.backend.springapp.repository.UserRepository;
+import com.backend.springapp.service.AIService.AIDecision;
 
 @Service
 @Transactional
@@ -40,29 +42,109 @@ public class ComplaintService {
     @Autowired
     private SLARepository slaRepository;
 
+    @Autowired
+    private AIService aiService;
+
     /**
      * Create a new complaint (filed by citizen)
-     * Initially: status = FILED, no department, no staff assigned
-     * Department will be assigned later by AI
-     * Staff will be assigned later by department head
+     * AI automatically analyzes and assigns: category, department, priority, SLA
      */
-    public Complaint createComplaint(Complaint complaint, Long citizenId) {
+    public ComplaintResponseDTO createComplaint(Complaint complaint, Long citizenId) {
         if (!userRepository.existsById(citizenId)) {
             throw new ResourceNotFoundException("Citizen not found with id: " + citizenId);
         }
         
+        // Set basic fields
         complaint.setCitizenId(citizenId);
         complaint.setStatus(ComplaintStatus.FILED);
-        complaint.setDepartmentId(null);
         complaint.setStaffId(null);
-        
         complaint.setStartTime(null);
         complaint.setUpdatedTime(null);
         complaint.setResolvedTime(null);
         complaint.setClosedTime(null);
         complaint.setCitizenSatisfaction(null);
+
+        // Save first to get ID
+        Complaint saved = complaintRepository.save(complaint);
+
+        // AI analyzes the complaint
+        AIDecision aiDecision = aiService.analyzeComplaint(saved);
+
+        // Apply AI decision
+        Category category = categoryRepository.findByName(aiDecision.categoryName)
+            .orElseGet(() -> categoryRepository.findByName("OTHER").orElseThrow());
+
+        SLA slaConfig = slaRepository.findByCategory(category)
+            .orElseThrow(() -> new ResourceNotFoundException("SLA not found for category: " + category.getName()));
+
+        saved.setCategoryId(category.getId());
+        saved.setDepartmentId(slaConfig.getDepartment().getId());
+        saved.setPriority(Priority.valueOf(aiDecision.priority));
+        saved.setSlaDaysAssigned(aiDecision.slaDays);
+        saved.setSlaDeadline(LocalDateTime.now().plusDays(aiDecision.slaDays));
+        saved.setAiReasoning(aiDecision.reasoning);
+        saved.setAiConfidence(aiDecision.confidence);
+
+        Complaint finalComplaint = complaintRepository.save(saved);
+
+        // Build response with all details
+        return buildResponseDTO(finalComplaint, category.getName(), slaConfig.getDepartment().getName());
+    }
+
+    /**
+     * Build response DTO with AI analysis details
+     */
+    private ComplaintResponseDTO buildResponseDTO(Complaint complaint, String categoryName, String departmentName) {
+        String staffName = null;
+        if (complaint.getStaffId() != null) {
+            staffName = userRepository.findById(complaint.getStaffId())
+                .map(User::getName)
+                .orElse(null);
+        }
+
+        return ComplaintResponseDTO.builder()
+            .complaintId(complaint.getComplaintId())
+            .title(complaint.getTitle())
+            .description(complaint.getDescription())
+            .location(complaint.getLocation())
+            .status(complaint.getStatus())
+            .createdTime(complaint.getCreatedTime())
+            .citizenId(complaint.getCitizenId())
+            .categoryName(categoryName)
+            .departmentName(departmentName)
+            .priority(complaint.getPriority())
+            .slaDaysAssigned(complaint.getSlaDaysAssigned())
+            .slaDeadline(complaint.getSlaDeadline())
+            .aiReasoning(complaint.getAiReasoning())
+            .aiConfidence(complaint.getAiConfidence())
+            .staffId(complaint.getStaffId())
+            .staffName(staffName)
+            .build();
+    }
+
+    /**
+     * Get complaint by ID with full details
+     */
+    @Transactional(readOnly = true)
+    public ComplaintResponseDTO getComplaintResponseById(Long complaintId) {
+        Complaint complaint = complaintRepository.findById(complaintId)
+            .orElseThrow(() -> new ResourceNotFoundException("Complaint not found with id: " + complaintId));
         
-        return complaintRepository.save(complaint);
+        String categoryName = "Unknown";
+        String departmentName = "Unknown";
+        
+        if (complaint.getCategoryId() != null) {
+            categoryName = categoryRepository.findById(complaint.getCategoryId())
+                .map(Category::getName)
+                .orElse("Unknown");
+        }
+        if (complaint.getDepartmentId() != null) {
+            departmentName = departmentRepository.findById(complaint.getDepartmentId())
+                .map(Department::getName)
+                .orElse("Unknown");
+        }
+        
+        return buildResponseDTO(complaint, categoryName, departmentName);
     }
 
     @Transactional(readOnly = true)

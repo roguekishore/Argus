@@ -1,0 +1,10 @@
+# VS Code settings with secrets
+.vscode/launch.json
+
+.vscode/settings.json
+
+.vscode/
+
+# Environment files
+.env
+*.env.local
