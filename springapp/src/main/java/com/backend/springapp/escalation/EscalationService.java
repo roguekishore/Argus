@@ -10,15 +10,21 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.backend.springapp.audit.AuditActorContext;
+import com.backend.springapp.audit.AuditService;
 import com.backend.springapp.dto.response.EscalationEventDTO;
 import com.backend.springapp.dto.response.OverdueComplaintDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.EscalationLevel;
+import com.backend.springapp.enums.UserType;
 import com.backend.springapp.escalation.EscalationEvaluationService.EscalationResult;
 import com.backend.springapp.model.Complaint;
 import com.backend.springapp.model.EscalationEvent;
+import com.backend.springapp.model.User;
+import com.backend.springapp.notification.NotificationService;
 import com.backend.springapp.repository.ComplaintRepository;
 import com.backend.springapp.repository.EscalationEventRepository;
+import com.backend.springapp.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -45,6 +51,9 @@ public class EscalationService {
     private final EscalationEvaluationService evaluationService;
     private final EscalationEventRepository escalationEventRepository;
     private final ComplaintRepository complaintRepository;
+    private final AuditService auditService;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     /**
      * Process potential escalation for a single complaint.
@@ -91,7 +100,19 @@ public class EscalationService {
         // Step 4: Update complaint's escalation level
         updateComplaintEscalationLevel(complaint, result.requiredLevel());
 
-        log.info("Escalated complaint {} from {} to {} - Reason: {}", 
+        // AUDIT: Record the escalation event (SYSTEM actor for auto-escalation)
+        auditService.recordEscalation(
+            complaint.getComplaintId(),
+            result.currentLevel().name(),
+            result.requiredLevel().name(),
+            AuditActorContext.system(),
+            result.reason()
+        );
+
+        // NOTIFICATION: Send escalation alerts AFTER audit (best-effort)
+        sendEscalationNotifications(complaint, result);
+
+        log.info("Escalated complaint {} from {} to {} - Reason: {}",
                 complaint.getComplaintId(), 
                 result.currentLevel(), 
                 result.requiredLevel(), 
@@ -255,5 +276,92 @@ public class EscalationService {
                 .slaDeadline(event.getSlaDeadlineSnapshot())
                 .isAutomated(event.getIsAutomated())
                 .build();
+    }
+
+    /**
+     * Send escalation notifications to relevant parties.
+     * 
+     * IMPORTANT: Called AFTER audit logging.
+     * Notification failures are logged but don't affect the transaction.
+     * 
+     * Escalation notification recipients:
+     * - L1: Department Head
+     * - L2: Commissioner
+     * - L3: Super Admin / Municipal Commissioner
+     * 
+     * @param complaint The complaint being escalated
+     * @param result    The escalation evaluation result
+     */
+    private void sendEscalationNotifications(Complaint complaint, EscalationResult result) {
+        Long complaintId = complaint.getComplaintId();
+        String title = complaint.getTitle();
+        String levelName = result.requiredLevel().getDisplayName();
+        String reason = result.reason();
+        
+        // Get the recipient based on escalation level
+        // In a full implementation, this would query for the appropriate role holder
+        // For now, we notify based on the escalation level's responsible role
+        
+        Long recipientId = getEscalationRecipient(complaint, result.requiredLevel());
+        
+        if (recipientId != null) {
+            notificationService.notifyEscalation(
+                recipientId,
+                complaintId,
+                title,
+                levelName,
+                reason
+            );
+        }
+        
+        // Also notify the citizen that their complaint has been escalated
+        if (complaint.getCitizenId() != null) {
+            notificationService.notifyStatusChange(
+                complaint.getCitizenId(),
+                complaintId,
+                title,
+                "ESCALATED_TO_" + result.currentLevel().name(),
+                "ESCALATED_TO_" + result.requiredLevel().name()
+            );
+        }
+    }
+    
+    /**
+     * Determine the recipient for escalation notification based on level.
+     * 
+     * L0 (No Escalation): No notification needed
+     * L1 (Department Head): Find DEPT_HEAD for the complaint's department
+     * L2 (Commissioner): Find MUNICIPAL_COMMISSIONER
+     * 
+     * @param complaint The complaint being escalated
+     * @param level     The escalation level
+     * @return User ID of the recipient, or null if not found
+     */
+    private Long getEscalationRecipient(Complaint complaint, EscalationLevel level) {
+        try {
+            return switch (level) {
+                case L0 -> null; // No escalation, no notification
+                
+                case L1 -> {
+                    // Find Department Head for the complaint's department
+                    Long deptId = complaint.getDepartmentId();
+                    if (deptId == null) {
+                        log.warn("Cannot find L1 recipient: complaint {} has no department", complaint.getComplaintId());
+                        yield null;
+                    }
+                    Optional<User> deptHead = userRepository.findFirstByDeptIdAndUserType(deptId, UserType.DEPT_HEAD);
+                    yield deptHead.map(User::getUserId).orElse(null);
+                }
+                
+                case L2 -> {
+                    // Find Municipal Commissioner (highest escalation level)
+                    List<User> commissioners = userRepository.findByUserType(UserType.MUNICIPAL_COMMISSIONER);
+                    yield commissioners.isEmpty() ? null : commissioners.get(0).getUserId();
+                }
+            };
+        } catch (Exception e) {
+            log.error("Error looking up escalation recipient for level {}: {}", level, e.getMessage());
+            return null;
+        }
     }
 }

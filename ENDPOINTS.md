@@ -60,19 +60,7 @@ User Controller:
     GET - /api/users/department/{deptId}/head (get head of a department)
 
 Escalation Controller:
-    POST - /api/escalation/{complaintId}?level=1&userid=123 (manually escalate a complaint)
-    POST - /api/de-escalate/{complaintId}?level=0 (deescalate a complaint - admin only)
-    POST - /api/escalation/check (trigger escalation check manually)
-
-    GET /api/escalation/transitions/{complaintId}?userId=123 (get valid next state transitions for curr state and user)
-    GET /api/escalation/transitions?currentStatus=OPEN&userType=STAFF
-    (get valid state transition for user lvl - for ui dropdowns)
-    GET /api/escalation/stats/department/{deptId}
-    GET /api/escalation/stats/overall
-
-    PUT - /api/escalation/{escalationId}/resolve (resolve an escalation)
-
-    GET - /api/escalation/dashboard/staff/{staffId} (get escalation dashboard for a staff)
-    GET - /api/escalation/dashboard/dept-head/{deptHeadId} (escalated complaints and all department complaints)
-    GET - /api/escalation/dashboard/commissioner (all complaints and escalated complaints)
-    GET - /api/escalation/dashboard/user/{userId} (for staffs and other users except citizen)
+    GET - /api/complaints/{id}/escalations (get escalation history for a complaint)
+    GET - /api/escalations/overdue (get all overdue complaints with escalation status)
+    GET - /api/escalations/stats (get escalation statistics - counts by level)
+    POST - /api/escalations/trigger (manually trigger escalation scheduler run)

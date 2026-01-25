@@ -1,22 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input, Label, Separator } from '../components/ui';
 import { ThemeToggle } from '../components/theme-toggle';
-import { Mail, Lock, Eye, EyeOff, Building2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { ROLE_DASHBOARD_ROUTES } from '../constants/roles';
 
-function Login({ onSwitchToSignup }) {
+function Login() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isLoading, error, clearError } = useAuth();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
+
+  // Get redirect path from location state (if redirected from protected route)
+  const from = location.state?.from || null;
+  
+  // Check for success message from signup redirect
+  useEffect(() => {
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      // Clear the message from history state to prevent re-showing on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state?.message]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
-      console.log('Login:', { email, password });
-    }, 1500);
+    clearError();
+    setSuccessMessage(null); // Clear success message when submitting
+
+    try {
+      const userData = await login({ email, password });
+      
+      // Redirect to intended page or role-based dashboard
+      const redirectTo = from || ROLE_DASHBOARD_ROUTES[userData.role] || '/';
+      navigate(redirectTo, { replace: true });
+    } catch (err) {
+      // Error is handled by useAuth hook
+      console.error('Login failed:', err);
+    }
   };
 
   return (
@@ -39,6 +65,22 @@ function Login({ onSwitchToSignup }) {
         </CardHeader>
         
         <CardContent>
+          {/* Success Alert (e.g., from signup redirect) */}
+          {successMessage && (
+            <div className="flex items-center gap-2 p-3 mb-4 text-sm text-green-800 bg-green-100 rounded-lg dark:bg-green-900 dark:text-green-200">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {/* Error Alert */}
+          {error && (
+            <div className="flex items-center gap-2 p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg dark:bg-red-900 dark:text-red-200">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -52,6 +94,7 @@ function Login({ onSwitchToSignup }) {
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -59,9 +102,6 @@ function Login({ onSwitchToSignup }) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                {/* <Button variant="link" className="px-0 h-auto text-xs text-muted-foreground">
-                  Forgot password?
-                </Button> */}
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -73,6 +113,7 @@ function Login({ onSwitchToSignup }) {
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 pr-10"
                   required
+                  disabled={isLoading}
                 />
                 <Button
                   type="button"
@@ -80,6 +121,7 @@ function Login({ onSwitchToSignup }) {
                   size="icon"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={isLoading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -104,9 +146,9 @@ function Login({ onSwitchToSignup }) {
           
           <p className="text-center text-sm text-muted-foreground mt-6">
             Don't have an account?{' '}
-            <Button variant="link" className="px-0 h-auto" onClick={onSwitchToSignup}>
+            <Link to="/signup" className="text-primary hover:underline font-medium">
               Sign up
-            </Button>
+            </Link>
           </p>
         </CardContent>
       </Card>

@@ -1,26 +1,53 @@
-import React, { useState } from "react";
+/**
+ * AdminDashboard - Dashboard for System Administrators
+ * 
+ * ARCHITECTURE NOTES:
+ * - Primary focus: System oversight
+ * - Sections: All complaints (read-only), Escalations, Management entry points
+ * - Admin CANNOT change complaint state directly
+ * - Provides entry points to: User management, SLA config, Categories
+ * 
+ * DATA FLOW:
+ * - useComplaints() fetches all complaints for ADMIN role
+ * - Management data (departments, users) fetched separately
+ * - No direct complaint actions - admin is oversight role
+ * 
+ * FUTURE EXTENSIBILITY:
+ * - Audit logs viewer
+ * - System notifications config
+ * - Analytics dashboard
+ */
+
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Badge } from "../../components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle } from "../../components/ui";
+import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { useUser } from "../../context/UserContext";
+import { useComplaints } from "../../hooks/useComplaints";
+import { useAuth } from "../../hooks/useAuth";
+import { departmentsService } from "../../services";
+import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
   FileText,
   Building,
-  Building2,
   Users,
-  UserPlus,
-  BarChart3,
-  TrendingUp,
   AlertTriangle,
   Clock,
   CheckCircle2,
   Settings,
-  PieChart,
+  RefreshCw,
   Shield,
   Map,
-  Bell,
+  TrendingUp,
+  Eye,
 } from "lucide-react";
 
-// Admin Menu Items
+// =============================================================================
+// MENU CONFIGURATION
+// Admin has system-wide oversight and management access
+// =============================================================================
 const adminMenuItems = [
   {
     label: "Overview",
@@ -33,30 +60,40 @@ const adminMenuItems = [
     ],
   },
   {
-    label: "Management",
+    label: "Complaints",
     items: [
       {
-        id: "complaints",
+        id: "all-complaints",
         label: "All Complaints",
         icon: <FileText className="h-4 w-4" />,
         children: [
           {
-            id: "pending-review",
-            label: "Pending Review",
+            id: "complaints-all",
+            label: "View All",
+            icon: <Eye className="h-4 w-4" />,
+          },
+          {
+            id: "complaints-filed",
+            label: "Filed",
             icon: <Clock className="h-4 w-4" />,
           },
           {
-            id: "escalated",
-            label: "Escalated",
-            icon: <AlertTriangle className="h-4 w-4" />,
-          },
-          {
-            id: "resolved",
+            id: "complaints-resolved",
             label: "Resolved",
             icon: <CheckCircle2 className="h-4 w-4" />,
           },
         ],
       },
+      {
+        id: "escalations",
+        label: "Escalations",
+        icon: <AlertTriangle className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Management",
+    items: [
       {
         id: "departments",
         label: "Departments",
@@ -64,76 +101,157 @@ const adminMenuItems = [
       },
       {
         id: "users",
-        label: "User Management",
+        label: "Users",
         icon: <Users className="h-4 w-4" />,
-        children: [
-          {
-            id: "all-users",
-            label: "All Users",
-            icon: <Users className="h-4 w-4" />,
-          },
-          {
-            id: "add-user",
-            label: "Add User",
-            icon: <UserPlus className="h-4 w-4" />,
-          },
-          {
-            id: "roles",
-            label: "Roles & Permissions",
-            icon: <Shield className="h-4 w-4" />,
-          },
-        ],
       },
-    ],
-  },
-  {
-    label: "Analytics",
-    items: [
-      {
-        id: "reports",
-        label: "Reports",
-        icon: <BarChart3 className="h-4 w-4" />,
-      },
-      {
-        id: "analytics",
-        label: "System Analytics",
-        icon: <PieChart className="h-4 w-4" />,
-      },
-    ],
-  },
-  {
-    label: "Configuration",
-    items: [
       {
         id: "categories",
         label: "Categories",
         icon: <Map className="h-4 w-4" />,
       },
       {
-        id: "notifications",
-        label: "Notifications",
-        icon: <Bell className="h-4 w-4" />,
+        id: "sla-config",
+        label: "SLA Configuration",
+        icon: <Clock className="h-4 w-4" />,
       },
+    ],
+  },
+  {
+    label: "System",
+    items: [
       {
         id: "settings",
-        label: "System Settings",
+        label: "Settings",
         icon: <Settings className="h-4 w-4" />,
       },
     ],
   },
 ];
 
+// =============================================================================
+// MANAGEMENT CARD COMPONENT
+// Quick access cards for management sections
+// =============================================================================
+const ManagementCard = ({ icon, title, description, onClick }) => (
+  <Card 
+    className="cursor-pointer hover:shadow-md transition-shadow"
+    onClick={onClick}
+  >
+    <CardHeader className="flex flex-row items-center gap-4 pb-2">
+      <div className="p-2 bg-primary/10 rounded-lg">
+        {icon}
+      </div>
+      <div>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+    </CardHeader>
+  </Card>
+);
+
+// =============================================================================
+// ADMIN DASHBOARD COMPONENT
+// =============================================================================
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
   
-  const user = {
-    name: "Administrator",
-    email: "admin@municipality.gov",
-    role: "Admin",
-  };
+  // Context and hooks
+  const { userId, role, email, name } = useUser();
+  const { logout } = useAuth();
+  const {
+    complaints,
+    stats,
+    isLoading,
+    error,
+    refresh,
+  } = useComplaints();
 
-  const getBreadcrumbs = () => {
-    const breadcrumbs = [{ label: "Dashboard", href: "/" }];
+  // Local state for management data
+  const [departments, setDepartments] = useState([]);
+
+  // Fetch departments
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const data = await departmentsService.getAll();
+        setDepartments(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to fetch departments:', err);
+      }
+    };
+    fetchDepartments();
+  }, []);
+
+  // ==========================================================================
+  // DERIVED DATA
+  // ==========================================================================
+  const displayStats = useMemo(() => [
+    { 
+      title: "Total Complaints", 
+      value: stats.total?.toString() || "0", 
+      description: "System-wide",
+      icon: <FileText className="h-5 w-5" /> 
+    },
+    { 
+      title: "Filed", 
+      value: stats.filed?.toString() || "0", 
+      description: "Awaiting assignment",
+      icon: <Clock className="h-5 w-5 text-blue-500" /> 
+    },
+    { 
+      title: "In Progress", 
+      value: stats.inProgress?.toString() || "0", 
+      description: "Being handled",
+      icon: <TrendingUp className="h-5 w-5 text-yellow-500" /> 
+    },
+    { 
+      title: "Escalated", 
+      value: stats.escalated?.toString() || complaints.filter(c => c.escalationLevel > 0).length.toString(), 
+      description: "Needs attention",
+      icon: <AlertTriangle className="h-5 w-5 text-red-500" /> 
+    },
+  ], [stats, complaints]);
+
+  // Filter complaints based on active menu item
+  const filteredComplaints = useMemo(() => {
+    switch (activeItem) {
+      case 'complaints-filed':
+        return complaints.filter(c => c.state === COMPLAINT_STATES.FILED);
+      case 'complaints-resolved':
+        return complaints.filter(c => 
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+        );
+      case 'escalations':
+        return complaints.filter(c => c.escalationLevel > 0);
+      case 'complaints-all':
+      default:
+        return complaints;
+    }
+  }, [complaints, activeItem]);
+
+  // ==========================================================================
+  // ACTION HANDLERS
+  // Admin has READ-ONLY access to complaints
+  // ==========================================================================
+  
+  // View complaint details
+  const handleViewDetails = useCallback((complaint) => {
+    navigate(`/dashboard/admin/complaints/${complaint.complaintId || complaint.id}`);
+  }, [navigate]);
+
+  // Logout
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  // ==========================================================================
+  // BREADCRUMB GENERATION
+  // ==========================================================================
+  const getBreadcrumbs = useCallback(() => {
+    const breadcrumbs = [{ label: "Dashboard", href: "/dashboard/admin" }];
+    
     if (activeItem !== "dashboard") {
       for (const group of adminMenuItems) {
         for (const item of group.items) {
@@ -152,109 +270,304 @@ const AdminDashboard = () => {
       }
     }
     return breadcrumbs;
+  }, [activeItem]);
+
+  // Layout user object
+  const layoutUser = {
+    name: name || 'Administrator',
+    email: email || 'admin@municipality.gov',
+    role: ROLE_DISPLAY_NAMES[role] || 'Administrator',
   };
 
-  const stats = [
-    { title: "Total Complaints", value: "1,234", change: "+18%", icon: <FileText className="h-5 w-5" /> },
-    { title: "Active Users", value: "856", change: "+24", icon: <Users className="h-5 w-5 text-blue-500" /> },
-    { title: "Departments", value: "12", icon: <Building className="h-5 w-5 text-green-500" /> },
-    { title: "Resolution Rate", value: "92%", change: "+3%", icon: <TrendingUp className="h-5 w-5 text-green-500" /> },
-  ];
+  // ==========================================================================
+  // RENDER CONTENT
+  // ==========================================================================
+  const renderContent = () => {
+    switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT LISTS (Read-Only)
+      // -----------------------------------------------------------------------
+      case 'complaints-all':
+      case 'complaints-filed':
+      case 'complaints-resolved':
+        const titles = {
+          'complaints-all': 'All Complaints',
+          'complaints-filed': 'Filed Complaints',
+          'complaints-resolved': 'Resolved Complaints',
+        };
+        const descriptions = {
+          'complaints-all': 'Complete view of all complaints in the system',
+          'complaints-filed': 'Complaints awaiting assignment and processing',
+          'complaints-resolved': 'Complaints that have been resolved or closed',
+        };
 
-  const departments = [
-    { name: "Water & Sanitation", complaints: 156, resolved: 142 },
-    { name: "Roads & Infrastructure", complaints: 234, resolved: 198 },
-    { name: "Electricity", complaints: 189, resolved: 175 },
-    { name: "Waste Management", complaints: 145, resolved: 130 },
-  ];
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title={titles[activeItem]}
+              description={descriptions[activeItem]}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            {/* Read-only notice */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4" />
+                <span className="font-medium">Administrative View</span>
+              </div>
+              <p className="text-sm mt-1">
+                Complaint state changes are handled by assigned staff and department heads.
+              </p>
+            </div>
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage="No complaints found."
+              onViewDetails={handleViewDetails}
+              // No action handlers - read-only view
+            />
+          </div>
+        );
 
+      // -----------------------------------------------------------------------
+      // ESCALATIONS
+      // -----------------------------------------------------------------------
+      case 'escalations':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Escalated Complaints"
+              description="Complaints that have been escalated for attention"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage="No escalated complaints."
+              onViewDetails={handleViewDetails}
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // MANAGEMENT SECTIONS (Entry Points)
+      // -----------------------------------------------------------------------
+      case 'departments':
+        return (
+          <DashboardSection
+            title="Department Management"
+            description="View and manage departments"
+          >
+            <div className="space-y-2">
+              {departments.length === 0 ? (
+                <p className="text-muted-foreground">Loading departments...</p>
+              ) : (
+                departments.map(dept => (
+                  <div key={dept.id} className="flex items-center justify-between p-3 border rounded-md">
+                    <div className="flex items-center gap-3">
+                      <Building className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{dept.name}</p>
+                        <p className="text-sm text-muted-foreground">{dept.description || 'No description'}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardSection>
+        );
+
+      case 'users':
+        return (
+          <DashboardSection
+            title="User Management"
+            description="Manage system users and roles"
+          >
+            {/* TODO: Integrate UserManagement component */}
+            <p className="text-muted-foreground">User management interface will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      case 'categories':
+        return (
+          <DashboardSection
+            title="Complaint Categories"
+            description="Manage complaint categories and subcategories"
+          >
+            {/* TODO: Integrate CategoryManagement component */}
+            <p className="text-muted-foreground">Category management interface will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      case 'sla-config':
+        return (
+          <DashboardSection
+            title="SLA Configuration"
+            description="Configure SLA rules for complaint resolution"
+          >
+            {/* TODO: Integrate SLAConfig component */}
+            <p className="text-muted-foreground">SLA configuration interface will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      case 'settings':
+        return (
+          <DashboardSection
+            title="System Settings"
+            description="Configure system-wide settings"
+          >
+            {/* TODO: Integrate SystemSettings component */}
+            <p className="text-muted-foreground">System settings interface will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // DASHBOARD (DEFAULT)
+      // -----------------------------------------------------------------------
+      default:
+        const escalatedComplaints = complaints.filter(c => c.escalationLevel > 0);
+        
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Admin Dashboard"
+              description="System oversight and management"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+
+            {/* Stats Grid */}
+            <StatsGrid stats={displayStats} />
+
+            {/* Escalation Alert */}
+            {escalatedComplaints.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-md dark:bg-red-900/20 dark:border-red-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-red-800 dark:text-red-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">
+                      {escalatedComplaints.length} escalated complaint{escalatedComplaints.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveItem('escalations')}
+                  >
+                    View Escalations
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Management Quick Access */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Management</h3>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <ManagementCard
+                  icon={<Users className="h-5 w-5" />}
+                  title="Users"
+                  description="Manage users"
+                  onClick={() => setActiveItem('users')}
+                />
+                <ManagementCard
+                  icon={<Building className="h-5 w-5" />}
+                  title="Departments"
+                  description="View departments"
+                  onClick={() => setActiveItem('departments')}
+                />
+                <ManagementCard
+                  icon={<Map className="h-5 w-5" />}
+                  title="Categories"
+                  description="Manage categories"
+                  onClick={() => setActiveItem('categories')}
+                />
+                <ManagementCard
+                  icon={<Clock className="h-5 w-5" />}
+                  title="SLA Config"
+                  description="Configure SLAs"
+                  onClick={() => setActiveItem('sla-config')}
+                />
+              </div>
+            </div>
+
+            {/* Recent Complaints */}
+            <DashboardSection
+              title="Recent Complaints"
+              description="Latest complaints in the system"
+              action={
+                <Button 
+                  variant="link" 
+                  size="sm"
+                  onClick={() => setActiveItem('complaints-all')}
+                >
+                  View All
+                </Button>
+              }
+            >
+              <ComplaintList
+                complaints={complaints.slice(0, 5)}
+                isLoading={isLoading}
+                emptyMessage="No complaints in the system."
+                compact={true}
+                onViewDetails={handleViewDetails}
+              />
+            </DashboardSection>
+          </div>
+        );
+    }
+  };
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
     <DashboardLayout
       menuItems={adminMenuItems}
-      user={user}
+      user={layoutUser}
       breadcrumbs={getBreadcrumbs()}
       activeItem={activeItem}
       setActiveItem={setActiveItem}
-      onLogout={() => console.log("Logout")}
+      onLogout={handleLogout}
     >
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Admin Dashboard</h2>
-          <p className="text-muted-foreground">System-wide overview and management.</p>
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+          {error}
         </div>
-        
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                {stat.icon}
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                {stat.change && (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="text-green-500">{stat.change}</span> from last month
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Department Performance</CardTitle>
-              <CardDescription>Complaints vs Resolutions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {departments.map((dept, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{dept.name}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {dept.resolved}/{dept.complaints}
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-primary rounded-full" 
-                        style={{ width: `${(dept.resolved / dept.complaints) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>System-wide events</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { action: "New user registered", time: "2 min ago", type: "user" },
-                  { action: "Complaint #1234 escalated", time: "15 min ago", type: "alert" },
-                  { action: "Water Dept. resolved 5 complaints", time: "1 hr ago", type: "success" },
-                  { action: "System backup completed", time: "3 hrs ago", type: "info" },
-                ].map((activity, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
-                    <span className="text-sm">{activity.action}</span>
-                    <span className="text-xs text-muted-foreground">{activity.time}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
+      {renderContent()}
     </DashboardLayout>
   );
 };

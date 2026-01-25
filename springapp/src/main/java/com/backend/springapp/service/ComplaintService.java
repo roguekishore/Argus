@@ -7,7 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.backend.springapp.audit.AuditActorContext;
+import com.backend.springapp.audit.AuditService;
 import com.backend.springapp.dto.response.ComplaintResponseDTO;
+import com.backend.springapp.notification.NotificationService;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.exception.ResourceNotFoundException;
@@ -44,6 +47,12 @@ public class ComplaintService {
 
     @Autowired
     private AIService aiService;
+
+    @Autowired
+    private AuditService auditService;
+
+    @Autowired
+    private NotificationService notificationService;
 
     /**
      * Create a new complaint (filed by citizen)
@@ -86,6 +95,34 @@ public class ComplaintService {
         saved.setAiConfidence(aiDecision.confidence);
 
         Complaint finalComplaint = complaintRepository.save(saved);
+
+        // AUDIT: Record complaint creation with FILED status
+        auditService.recordComplaintStateChange(
+            finalComplaint.getComplaintId(),
+            null,  // No previous state - this is creation
+            ComplaintStatus.FILED.name(),
+            AuditActorContext.forUser(citizenId),
+            "Complaint filed by citizen"
+        );
+        
+        // AUDIT: Record initial department assignment by AI
+        auditService.recordDepartmentAssignment(
+            finalComplaint.getComplaintId(),
+            null,  // No previous department
+            slaConfig.getDepartment().getId(),
+            AuditActorContext.system(),
+            "AI-assigned department: " + slaConfig.getDepartment().getName()
+        );
+
+        // NOTIFY: Confirm to citizen that complaint was filed
+        // String title = "Complaint #" + finalComplaint.getComplaintId();
+        // notificationService.notifyStatusChange(
+        //     citizenId,
+        //     finalComplaint.getComplaintId(),
+        //     title,
+        //     null,  // No previous status
+        //     ComplaintStatus.FILED.name()
+        // );
 
         // Build response with all details
         return buildResponseDTO(finalComplaint, category.getName(), slaConfig.getDepartment().getName());
@@ -194,10 +231,22 @@ public class ComplaintService {
         Department department = departmentRepository.findByName(departmentName)
             .orElseThrow(() -> new ResourceNotFoundException("Department not found with name: " + departmentName));
         
+        Long oldDepartmentId = complaint.getDepartmentId();
         complaint.setDepartmentId(department.getId());
         complaint.setUpdatedTime(LocalDateTime.now());
         
-        return complaintRepository.save(complaint);
+        Complaint saved = complaintRepository.save(complaint);
+        
+        // AUDIT: Record department assignment (SYSTEM actor for AI assignment)
+        auditService.recordDepartmentAssignment(
+            complaintId,
+            oldDepartmentId,
+            department.getId(),
+            AuditActorContext.system(),
+            "AI-assigned department: " + departmentName
+        );
+        
+        return saved;
     }
 
     // assign staff to complaint (by department head)
@@ -209,12 +258,54 @@ public class ComplaintService {
             throw new ResourceNotFoundException("Staff not found with id: " + staffId);
         }
         
+        Long oldStaffId = complaint.getStaffId();
+        ComplaintStatus oldStatus = complaint.getStatus();
+        
         complaint.setStaffId(staffId);
         complaint.setStatus(ComplaintStatus.IN_PROGRESS);
         complaint.setStartTime(LocalDateTime.now());
         complaint.setUpdatedTime(LocalDateTime.now());
         
-        return complaintRepository.save(complaint);
+        Complaint saved = complaintRepository.save(complaint);
+        
+        // AUDIT: Record staff assignment
+        // Note: Using SYSTEM actor here as this method doesn't have UserContext
+        // In production, pass UserContext from controller for proper attribution
+        auditService.recordStaffAssignment(
+            complaintId,
+            oldStaffId,
+            staffId,
+            AuditActorContext.system(),
+            "Staff assigned to complaint"
+        );
+        
+        // AUDIT: Record state change if status changed
+        if (oldStatus != ComplaintStatus.IN_PROGRESS) {
+            auditService.recordComplaintStateChange(
+                complaintId,
+                oldStatus != null ? oldStatus.name() : "null",
+                ComplaintStatus.IN_PROGRESS.name(),
+                AuditActorContext.system(),
+                "Status changed due to staff assignment"
+            );
+        }
+        
+        // NOTIFY: Notify the assigned staff member
+        String title = "Complaint #" + complaintId;
+        notificationService.notifyAssignment(staffId, complaintId, title);
+        
+        // NOTIFY: Notify citizen that their complaint is being worked on
+        if (complaint.getCitizenId() != null) {
+            notificationService.notifyStatusChange(
+                complaint.getCitizenId(),
+                complaintId,
+                title,
+                oldStatus != null ? oldStatus.name() : "FILED",
+                ComplaintStatus.IN_PROGRESS.name()
+            );
+        }
+        
+        return saved;
     }
 
     // ==================== AI METHODS (Priority & SLA) ====================
@@ -555,5 +646,121 @@ public class ComplaintService {
         result.put("warning", "⚠️ This endpoint is for TESTING ONLY. Do not use in production.");
         
         return result;
+    }
+
+    // ==================== DASHBOARD LISTING METHODS ====================
+
+    /**
+     * Get all complaints for a citizen
+     */
+    @Transactional(readOnly = true)
+    public List<Complaint> getComplaintsByCitizen(Long citizenId) {
+        return complaintRepository.findByCitizenUserIdOrderByCreatedTimeDesc(citizenId);
+    }
+
+    /**
+     * Get stats for citizen dashboard
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getCitizenStats(Long citizenId) {
+        java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
+        
+        stats.put("total", complaintRepository.countByCitizenUserId(citizenId));
+        stats.put("filed", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.FILED));
+        stats.put("inProgress", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.CLOSED));
+        stats.put("cancelled", complaintRepository.countByCitizenUserIdAndStatus(citizenId, ComplaintStatus.CANCELLED));
+        
+        // Pending = FILED + IN_PROGRESS
+        long pending = (long) stats.get("filed") + (long) stats.get("inProgress");
+        stats.put("pending", pending);
+        
+        return stats;
+    }
+
+    /**
+     * Get all complaints assigned to a staff member
+     */
+    @Transactional(readOnly = true)
+    public List<Complaint> getComplaintsByStaff(Long staffId) {
+        return complaintRepository.findByStaffUserIdOrderByCreatedTimeDesc(staffId);
+    }
+
+    /**
+     * Get stats for staff dashboard
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getStaffStats(Long staffId) {
+        java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
+        
+        stats.put("total", complaintRepository.countByStaffUserId(staffId));
+        stats.put("inProgress", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByStaffUserIdAndStatus(staffId, ComplaintStatus.CLOSED));
+        
+        return stats;
+    }
+
+    /**
+     * Get all complaints for a department
+     */
+    @Transactional(readOnly = true)
+    public List<Complaint> getComplaintsByDepartment(Long deptId) {
+        return complaintRepository.findByDepartmentIdOrderByCreatedTimeDesc(deptId);
+    }
+
+    /**
+     * Get unassigned complaints for a department
+     */
+    @Transactional(readOnly = true)
+    public List<Complaint> getUnassignedComplaintsByDepartment(Long deptId) {
+        return complaintRepository.findByDepartmentIdAndStaffIsNullOrderByCreatedTimeDesc(deptId);
+    }
+
+    /**
+     * Get stats for department dashboard
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getDepartmentStats(Long deptId) {
+        java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
+        
+        stats.put("total", complaintRepository.countByDepartmentId(deptId));
+        stats.put("filed", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.FILED));
+        stats.put("inProgress", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.CLOSED));
+        
+        // Count unassigned (need a new query or filter in memory)
+        long unassigned = complaintRepository.findByDepartmentIdAndStaffIsNullOrderByCreatedTimeDesc(deptId).size();
+        stats.put("unassigned", unassigned);
+        
+        return stats;
+    }
+
+    /**
+     * Get all escalated complaints (for commissioner)
+     */
+    @Transactional(readOnly = true)
+    public List<Complaint> getEscalatedComplaints() {
+        return complaintRepository.findEscalatedComplaints();
+    }
+
+    /**
+     * Get system-wide stats (for admin dashboard)
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getSystemStats() {
+        java.util.Map<String, Object> stats = new java.util.LinkedHashMap<>();
+        
+        stats.put("total", complaintRepository.count());
+        stats.put("filed", complaintRepository.countByStatus(ComplaintStatus.FILED));
+        stats.put("inProgress", complaintRepository.countByStatus(ComplaintStatus.IN_PROGRESS));
+        stats.put("resolved", complaintRepository.countByStatus(ComplaintStatus.RESOLVED));
+        stats.put("closed", complaintRepository.countByStatus(ComplaintStatus.CLOSED));
+        stats.put("cancelled", complaintRepository.countByStatus(ComplaintStatus.CANCELLED));
+        stats.put("escalated", complaintRepository.countByEscalationLevelGreaterThan(0));
+        
+        return stats;
     }
 }

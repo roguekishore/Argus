@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input, Label, Separator } from '../components/ui';
 import { ThemeToggle } from '../components/theme-toggle';
-import { Mail, Lock, Eye, EyeOff, Building2, User, Phone, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Building2, User, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
-function Signup({ onSwitchToLogin }) {
+function Signup() {
+  const navigate = useNavigate();
+  const { register, isLoading, error, clearError } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -13,23 +17,49 @@ function Signup({ onSwitchToLogin }) {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Clear errors when user types
+    if (validationError) setValidationError(null);
+    if (error) clearError();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setValidationError(null);
+    setSuccessMessage(null);
+    clearError();
+
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match!');
+      setValidationError('Passwords do not match!');
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      console.log('Signup:', formData);
-    }, 1500);
+
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+      });
+
+      // Show success message then redirect to login
+      // NOTE: We don't auto-login - user must login after registration
+      // This is intentional for JWT migration (login will return token)
+      setSuccessMessage('Account created successfully! Redirecting to login...');
+      
+      setTimeout(() => {
+        navigate('/login', { 
+          replace: true,
+          state: { message: 'Registration successful! Please login.' }
+        });
+      }, 1500);
+    } catch (err) {
+      console.error('Registration failed:', err);
+    }
   };
 
   const passwordRequirements = [
@@ -56,6 +86,22 @@ function Signup({ onSwitchToLogin }) {
         </CardHeader>
         
         <CardContent>
+          {/* Success Alert */}
+          {successMessage && (
+            <div className="flex items-center gap-2 p-3 mb-4 text-sm text-green-800 bg-green-100 rounded-lg dark:bg-green-900 dark:text-green-200">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {/* Error Alert */}
+          {(error || validationError) && !successMessage && (
+            <div className="flex items-center gap-2 p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg dark:bg-red-900 dark:text-red-200">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{validationError || error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
@@ -199,9 +245,9 @@ function Signup({ onSwitchToLogin }) {
           
           <p className="text-center text-sm text-muted-foreground mt-6">
             Already have an account?{' '}
-            <Button variant="link" className="px-0 h-auto" onClick={onSwitchToLogin}>
+            <Link to="/login" className="text-primary hover:underline font-medium">
               Sign in
-            </Button>
+            </Link>
           </p>
         </CardContent>
       </Card>
