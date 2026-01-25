@@ -16,6 +16,9 @@ export { default as ResolutionProofForm } from './ResolutionProofForm';
 export { default as DisputeForm } from './DisputeForm';
 export { default as CitizenSignoffForm } from './CitizenSignoffForm';
 
+// Assignment modals
+export { default as StaffAssignmentModal } from './StaffAssignmentModal';
+
 // Dashboard layout helpers
 export { default as DashboardSection, PageHeader, StatsGrid, EmptyState } from './DashboardSection';
 

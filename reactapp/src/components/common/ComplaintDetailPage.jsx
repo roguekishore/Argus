@@ -63,7 +63,8 @@ const ComplaintDetailPage = ({
   onSubmitDispute,               // Citizen disputes resolution
   onBack,                        // Callback for back navigation
   backPath = '..',
-  role = 'citizen'
+  role = 'citizen',
+  currentUserId,                 // Current user ID for checking if complaint is assigned to user
 }) => {
   const { complaintId: paramComplaintId } = useParams();
   const navigate = useNavigate();
@@ -563,20 +564,26 @@ const ComplaintDetailPage = ({
             </Button>
           )}
 
-          {/* Rate button */}
-          {onRate && [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(complaint.status) && (
+          {/* Rate button - only for RESOLVED complaints that haven't been rated */}
+          {/* Once closed (via signoff), the rating has already been submitted */}
+          {onRate && complaint.status === COMPLAINT_STATES.RESOLVED && !complaint.rating && (
             <Button variant="outline" onClick={() => onRate(complaint.complaintId)}>
               Rate Service
             </Button>
           )}
 
           {/* Resolve button (for staff) */}
-          {onResolve && complaint.status === COMPLAINT_STATES.IN_PROGRESS && (
-            <Button onClick={() => onResolve(complaint.complaintId)}>
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Resolve
-            </Button>
-          )}
+          {/* If currentUserId is provided, only show resolve if complaint is assigned to that user */}
+          {onResolve && complaint.status === COMPLAINT_STATES.IN_PROGRESS && (() => {
+            const complaintStaffId = complaint.staffId || complaint.assignedStaffId;
+            const canResolve = !currentUserId || (complaintStaffId && String(complaintStaffId) === String(currentUserId));
+            return canResolve ? (
+              <Button onClick={() => onResolve(complaint.complaintId)}>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Resolve
+              </Button>
+            ) : null;
+          })()}
 
           {/* Cancel button */}
           {onCancel && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.status) && (
