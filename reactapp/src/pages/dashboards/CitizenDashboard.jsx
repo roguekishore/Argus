@@ -227,15 +227,16 @@ const CitizenDashboard = () => {
   ], [stats]);
 
   // Filter complaints based on active menu item
+  // Note: Backend returns 'status' property, not 'state'
   const filteredComplaints = useMemo(() => {
     switch (activeItem) {
       case 'pending':
         return complaints.filter(c => 
-          [COMPLAINT_STATES.FILED, COMPLAINT_STATES.IN_PROGRESS].includes(c.state)
+          [COMPLAINT_STATES.FILED, COMPLAINT_STATES.IN_PROGRESS].includes(c.status)
         );
       case 'resolved':
         return complaints.filter(c => 
-          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.status)
         );
       case 'all-complaints':
       default:

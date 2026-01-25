@@ -194,7 +194,7 @@ const authService = {
       userId: data.userId || data.id,
       name: data.name || data.fullName || '',
       email: data.email || '',
-      phone: data.phone || data.phoneNumber || '',
+      phone: data.phone || data.mobile || data.phoneNumber || '',
       role: data.role,
       departmentId: data.departmentId || data.department?.id || null,
     };

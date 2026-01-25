@@ -1,12 +1,14 @@
 package com.backend.springapp.controller;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.backend.springapp.dto.response.SLAResponseDTO;
 import com.backend.springapp.model.SLA;
 import com.backend.springapp.service.SLAService;
 
@@ -23,12 +25,12 @@ public class SLAController {
      * Body: { "slaDays": 7, "basePriority": "MEDIUM" }
      */
     @PostMapping
-    public ResponseEntity<SLA> createSLAConfig(
+    public ResponseEntity<SLAResponseDTO> createSLAConfig(
             @RequestParam Long categoryId,
             @RequestParam Long departmentId,
             @RequestBody SLA slaConfig) {
         SLA created = slaService.createSLAConfig(categoryId, departmentId, slaConfig);
-        return new ResponseEntity<>(created, HttpStatus.CREATED);
+        return new ResponseEntity<>(SLAResponseDTO.fromEntity(created), HttpStatus.CREATED);
     }
 
     /**
@@ -36,9 +38,9 @@ public class SLAController {
      * GET /api/sla/{id}
      */
     @GetMapping("/{id}")
-    public ResponseEntity<SLA> getSLAById(@PathVariable Long id) {
+    public ResponseEntity<SLAResponseDTO> getSLAById(@PathVariable Long id) {
         SLA sla = slaService.getSLAById(id);
-        return ResponseEntity.ok(sla);
+        return ResponseEntity.ok(SLAResponseDTO.fromEntity(sla));
     }
 
     /**
@@ -46,9 +48,9 @@ public class SLAController {
      * GET /api/sla/category/{categoryId}
      */
     @GetMapping("/category/{categoryId}")
-    public ResponseEntity<SLA> getSLAByCategoryId(@PathVariable Long categoryId) {
+    public ResponseEntity<SLAResponseDTO> getSLAByCategoryId(@PathVariable Long categoryId) {
         SLA sla = slaService.getSLAByCategoryId(categoryId);
-        return ResponseEntity.ok(sla);
+        return ResponseEntity.ok(SLAResponseDTO.fromEntity(sla));
     }
 
     /**
@@ -56,9 +58,9 @@ public class SLAController {
      * GET /api/sla/category/name/{categoryName}
      */
     @GetMapping("/category/name/{categoryName}")
-    public ResponseEntity<SLA> getSLAByCategoryName(@PathVariable String categoryName) {
+    public ResponseEntity<SLAResponseDTO> getSLAByCategoryName(@PathVariable String categoryName) {
         SLA sla = slaService.getSLAByCategoryName(categoryName);
-        return ResponseEntity.ok(sla);
+        return ResponseEntity.ok(SLAResponseDTO.fromEntity(sla));
     }
 
     /**
@@ -66,9 +68,12 @@ public class SLAController {
      * GET /api/sla
      */
     @GetMapping
-    public ResponseEntity<List<SLA>> getAllSLAConfigs() {
+    public ResponseEntity<List<SLAResponseDTO>> getAllSLAConfigs() {
         List<SLA> slaConfigs = slaService.getAllSLAConfigs();
-        return ResponseEntity.ok(slaConfigs);
+        List<SLAResponseDTO> response = slaConfigs.stream()
+            .map(SLAResponseDTO::fromEntity)
+            .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -77,9 +82,9 @@ public class SLAController {
      * Body: { "slaDays": 5, "basePriority": "HIGH" }
      */
     @PutMapping("/{id}")
-    public ResponseEntity<SLA> updateSLAConfig(@PathVariable Long id, @RequestBody SLA slaConfig) {
+    public ResponseEntity<SLAResponseDTO> updateSLAConfig(@PathVariable Long id, @RequestBody SLA slaConfig) {
         SLA updated = slaService.updateSLAConfig(id, slaConfig);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(SLAResponseDTO.fromEntity(updated));
     }
 
     /**
@@ -87,9 +92,9 @@ public class SLAController {
      * PUT /api/sla/{id}/department/{departmentId}
      */
     @PutMapping("/{id}/department/{departmentId}")
-    public ResponseEntity<SLA> updateSLADepartment(@PathVariable Long id, @PathVariable Long departmentId) {
+    public ResponseEntity<SLAResponseDTO> updateSLADepartment(@PathVariable Long id, @PathVariable Long departmentId) {
         SLA updated = slaService.updateSLADepartment(id, departmentId);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(SLAResponseDTO.fromEntity(updated));
     }
 
     /**

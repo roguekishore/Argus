@@ -66,6 +66,16 @@ const markAsRead = async (notificationId) => {
 };
 
 /**
+ * Mark ALL notifications as read for the current user
+ * Uses the dedicated bulk endpoint for efficiency
+ * 
+ * @returns {Promise<Object>} - { count: number } of notifications marked as read
+ */
+const markAllAsRead = async () => {
+  return apiClient.put('/notifications/read-all');
+};
+
+/**
  * Mark multiple notifications as read (convenience method)
  * Uses Promise.allSettled to handle partial failures gracefully
  * 
@@ -84,6 +94,7 @@ const markMultipleAsRead = async (notificationIds) => {
 const notificationService = {
   getAll,
   markAsRead,
+  markAllAsRead,
   markMultipleAsRead,
   NOTIFICATION_TYPES,
 };

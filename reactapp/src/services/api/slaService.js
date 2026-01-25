@@ -9,9 +9,17 @@ import apiClient from './apiClient';
 
 const slaService = {
   /**
+   * Get all SLA configs
+   * GET /api/sla
+   */
+  getAll: () => {
+    return apiClient.get('/sla');
+  },
+
+  /**
    * Create a new SLA
    * POST /api/sla?categoryId={categoryId}&departmentId={departmentId}
-   * @param {Object} slaData 
+   * @param {Object} slaData - { slaDays, basePriority }
    * @param {string|number} categoryId 
    * @param {string|number} departmentId 
    */
@@ -47,6 +55,16 @@ const slaService = {
   },
 
   /**
+   * Update SLA config
+   * PUT /api/sla/{id}
+   * @param {string|number} id
+   * @param {Object} slaData - { slaDays, basePriority }
+   */
+  update: (id, slaData) => {
+    return apiClient.put(`/sla/${id}`, slaData);
+  },
+
+  /**
    * Update SLA department
    * PUT /api/sla/{id}/department/{departmentId}
    * @param {string|number} slaId 
@@ -54,6 +72,15 @@ const slaService = {
    */
   updateDepartment: (slaId, departmentId) => {
     return apiClient.put(`/sla/${slaId}/department/${departmentId}`);
+  },
+
+  /**
+   * Delete SLA config
+   * DELETE /api/sla/{id}
+   * @param {string|number} id
+   */
+  delete: (id) => {
+    return apiClient.delete(`/sla/${id}`);
   },
 };
 

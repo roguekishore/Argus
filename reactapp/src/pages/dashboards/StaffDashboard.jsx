@@ -217,13 +217,14 @@ const StaffDashboard = () => {
   , [complaints]);
 
   // Filter complaints based on active menu item
+  // Note: Backend returns 'status' property, not 'state'
   const filteredComplaints = useMemo(() => {
     switch (activeItem) {
       case 'in-progress':
-        return complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS);
+        return complaints.filter(c => c.status === COMPLAINT_STATES.IN_PROGRESS);
       case 'resolved':
         return complaints.filter(c => 
-          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.status)
         );
       case 'escalated':
         return complaints.filter(c => c.escalationLevel > 0);
@@ -477,7 +478,7 @@ const StaffDashboard = () => {
               }
             >
               <ComplaintList
-                complaints={complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS).slice(0, 5)}
+                complaints={complaints.filter(c => c.status === COMPLAINT_STATES.IN_PROGRESS).slice(0, 5)}
                 isLoading={isLoading}
                 emptyMessage="No complaints in progress. Pick up a new assignment!"
                 compact={true}
@@ -492,7 +493,7 @@ const StaffDashboard = () => {
               description="Newly assigned complaints awaiting your attention"
             >
               <ComplaintList
-                complaints={complaints.filter(c => c.state === COMPLAINT_STATES.FILED).slice(0, 5)}
+                complaints={complaints.filter(c => c.status === COMPLAINT_STATES.FILED).slice(0, 5)}
                 isLoading={isLoading}
                 emptyMessage="No pending complaints."
                 compact={true}

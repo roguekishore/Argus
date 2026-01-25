@@ -10,10 +10,10 @@ import apiClient from './apiClient';
 const departmentsService = {
   /**
    * Get all departments
-   * GET /api/departments/
+   * GET /api/departments
    */
   getAll: () => {
-    return apiClient.get('/departments/');
+    return apiClient.get('/departments');
   },
 
   /**
