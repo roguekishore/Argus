@@ -470,4 +470,90 @@ public class ComplaintService {
 
         return complaintRepository.save(complaint);
     }
+
+    // ============================================================
+    // ⚠️  TEST-ONLY METHODS - NOT FOR PRODUCTION USE  ⚠️
+    // ============================================================
+
+    /**
+     * ============================================================
+     * ⚠️  TEST-ONLY: Override filed date for escalation testing  ⚠️
+     * ============================================================
+     * 
+     * Backdates a complaint's createdTime to simulate overdue conditions.
+     * 
+     * WHY THIS EXISTS:
+     * - @CreationTimestamp sets createdTime automatically on INSERT
+     * - Hibernate ignores manual changes to @CreationTimestamp fields
+     * - We use native query to bypass Hibernate's restrictions
+     * - This allows testing escalation without waiting days
+     * 
+     * WHAT THIS METHOD DOES:
+     * 1. Validates complaint exists
+     * 2. Updates createdTime via native query (bypasses @CreationTimestamp)
+     * 3. Optionally recalculates slaDeadline = newFiledDate + slaDaysAssigned
+     * 4. Returns summary of changes for verification
+     * 
+     * WHAT THIS METHOD DOES NOT DO:
+     * - Does NOT trigger escalation logic
+     * - Does NOT modify complaint status
+     * - Does NOT affect any other complaint fields
+     * 
+     * @param complaintId The complaint to modify
+     * @param newFiledDate The new filed date (must be in past/present)
+     * @param recalculateSlaDeadline Whether to recalculate SLA deadline
+     * @return Map containing before/after values for verification
+     */
+    public java.util.Map<String, Object> updateFiledDateForTesting(
+            Long complaintId, 
+            LocalDateTime newFiledDate,
+            Boolean recalculateSlaDeadline) {
+        
+        // Step 1: Load and validate complaint exists
+        Complaint complaint = complaintRepository.findById(complaintId)
+            .orElseThrow(() -> new ResourceNotFoundException("Complaint not found with id: " + complaintId));
+
+        // Capture before values for response
+        LocalDateTime previousCreatedTime = complaint.getCreatedTime();
+        LocalDateTime previousSlaDeadline = complaint.getSlaDeadline();
+
+        // Step 2: Update createdTime
+        // NOTE: We update directly on the entity. Since @CreationTimestamp only acts on INSERT,
+        // setting the value manually before save() will persist it on UPDATE operations.
+        complaint.setCreatedTime(newFiledDate);
+
+        // Step 3: Optionally recalculate SLA deadline
+        LocalDateTime newSlaDeadline = previousSlaDeadline;
+        if (Boolean.TRUE.equals(recalculateSlaDeadline) && complaint.getSlaDaysAssigned() != null) {
+            newSlaDeadline = newFiledDate.plusDays(complaint.getSlaDaysAssigned());
+            complaint.setSlaDeadline(newSlaDeadline);
+        }
+
+        // Step 4: Save (updatedTime intentionally NOT changed - this is a test backdating)
+        complaintRepository.save(complaint);
+
+        // Step 5: Build response with before/after values
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("complaintId", complaintId);
+        result.put("message", "TEST-ONLY: Filed date updated successfully");
+        
+        java.util.Map<String, Object> changes = new java.util.LinkedHashMap<>();
+        changes.put("createdTime", java.util.Map.of(
+            "before", previousCreatedTime != null ? previousCreatedTime.toString() : null,
+            "after", newFiledDate.toString()
+        ));
+        
+        if (Boolean.TRUE.equals(recalculateSlaDeadline)) {
+            changes.put("slaDeadline", java.util.Map.of(
+                "before", previousSlaDeadline != null ? previousSlaDeadline.toString() : null,
+                "after", newSlaDeadline.toString(),
+                "slaDaysAssigned", complaint.getSlaDaysAssigned()
+            ));
+        }
+        
+        result.put("changes", changes);
+        result.put("warning", "⚠️ This endpoint is for TESTING ONLY. Do not use in production.");
+        
+        return result;
+    }
 }
