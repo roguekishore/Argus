@@ -27,7 +27,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button } from "../../components/ui";
-import { ComplaintList, ComplaintForm, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid, CitizenSignoffForm } from "../../components/common";
+import { ComplaintList, ComplaintForm, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid, CitizenSignoffForm, NearbyComplaints } from "../../components/common";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
@@ -43,6 +43,7 @@ import {
   HelpCircle,
   RefreshCw,
   AlertTriangle,
+  Users,
 } from "lucide-react";
 
 // =============================================================================
@@ -84,6 +85,11 @@ const citizenMenuItems = [
         id: "new-complaint",
         label: "File New Complaint",
         icon: <PlusCircle className="h-4 w-4" />,
+      },
+      {
+        id: "community",
+        label: "Community Issues",
+        icon: <Users className="h-4 w-4" />,
       },
     ],
   },
@@ -379,7 +385,22 @@ const CitizenDashboard = () => {
               onSubmit={handleCreateComplaint}
               onCancel={() => setActiveItem('dashboard')}
               isLoading={isSubmitting}
+              userId={userId}
             />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // COMMUNITY COMPLAINTS (Nearby Issues)
+      // -----------------------------------------------------------------------
+      case 'community':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Community Issues"
+              description="See complaints in your area. Support existing issues with 'Me Too' to help prioritize them."
+            />
+            <NearbyComplaints userId={userId} />
           </div>
         );
 

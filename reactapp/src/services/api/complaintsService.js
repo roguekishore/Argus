@@ -26,7 +26,7 @@ const complaintsService = {
    * Create a new complaint with image for a citizen
    * POST /api/complaints/citizen/{citizenId}/with-image
    * @param {string|number} citizenId 
-   * @param {Object} complaintData - { subject, description, location }
+   * @param {Object} complaintData - { subject, description, location, latitude, longitude }
    * @param {File|null} imageFile - Optional image file
    */
   createWithImage: (citizenId, complaintData, imageFile = null) => {
@@ -37,12 +37,39 @@ const complaintsService = {
     formData.append('description', complaintData.description || '');
     formData.append('location', complaintData.location || '');
     
+    // Add coordinates if provided (from map pin)
+    if (complaintData.latitude != null) {
+      formData.append('latitude', complaintData.latitude);
+    }
+    if (complaintData.longitude != null) {
+      formData.append('longitude', complaintData.longitude);
+    }
+    
     // Add image if provided
     if (imageFile) {
       formData.append('image', imageFile);
     }
     
     return apiClient.postFormData(`/complaints/citizen/${citizenId}/with-image`, formData);
+  },
+
+  /**
+   * Check for potential duplicate complaints based on location + description
+   * POST /api/complaints/check-duplicates
+   * @param {string} description - Complaint description
+   * @param {number} latitude - Location latitude
+   * @param {number} longitude - Location longitude
+   * @param {number} radiusMeters - Optional search radius (default 500m)
+   */
+  checkDuplicates: (description, latitude, longitude, radiusMeters = 500) => {
+    const params = new URLSearchParams();
+    params.append('description', description);
+    params.append('latitude', latitude);
+    params.append('longitude', longitude);
+    if (radiusMeters) {
+      params.append('radiusMeters', radiusMeters);
+    }
+    return apiClient.post(`/complaints/check-duplicates?${params.toString()}`);
   },
 
   /**

@@ -10,14 +10,15 @@
  * FEATURES:
  * - Subject/Title field (required)
  * - Description field with character count (required, min 20 chars)
- * - Location field (optional but recommended)
+ * - Location field with interactive map pin (REQUIRED - must pin on map)
  * - Image upload with drag-and-drop support
  * - Image preview with remove option
  * - Form validation with error messages
  * - Loading state during submission
+ * - Duplicate detection based on location + description similarity
  */
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { 
   Card, 
   CardHeader, 
@@ -38,9 +39,13 @@ import {
   CheckCircle2,
   AlertCircle,
   MapPin,
-  FileText
+  FileText,
+  Map
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import LocationPicker from "./LocationPicker";
+import DuplicateWarning from "./DuplicateWarning";
+import complaintsService from "../../services/api/complaintsService";
 
 // =============================================================================
 // CONSTANTS
@@ -49,6 +54,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 2000;
+const DUPLICATE_CHECK_DEBOUNCE_MS = 1000;
 
 // =============================================================================
 // COMPLAINT FORM COMPONENT
@@ -57,6 +63,7 @@ const ComplaintForm = ({
   onSubmit, 
   onCancel, 
   isLoading = false,
+  userId,
   className 
 }) => {
   // Form state
@@ -65,13 +72,65 @@ const ComplaintForm = ({
     description: '',
     location: '',
   });
+  const [coordinates, setCoordinates] = useState(null); // { lat, lng }
+  const [showMap, setShowMap] = useState(true); // Show map by default since location is required
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [errors, setErrors] = useState({});
   const [isDragging, setIsDragging] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null); // 'success' | 'error' | null
   
+  // Duplicate detection state
+  const [duplicateData, setDuplicateData] = useState(null);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicatesDismissed, setDuplicatesDismissed] = useState(false);
+  const duplicateCheckTimeoutRef = useRef(null);
+  
   const fileInputRef = useRef(null);
+
+  // ===========================================================================
+  // DUPLICATE DETECTION (debounced)
+  // ===========================================================================
+  useEffect(() => {
+    // Clear previous timeout
+    if (duplicateCheckTimeoutRef.current) {
+      clearTimeout(duplicateCheckTimeoutRef.current);
+    }
+    
+    // Only check if we have coordinates AND sufficient description
+    if (!coordinates || formData.description.length < MIN_DESCRIPTION_LENGTH) {
+      setDuplicateData(null);
+      return;
+    }
+    
+    // Reset dismissed state when location or description changes significantly
+    setDuplicatesDismissed(false);
+    
+    // Debounce the duplicate check
+    duplicateCheckTimeoutRef.current = setTimeout(async () => {
+      setIsCheckingDuplicates(true);
+      try {
+        const result = await complaintsService.checkDuplicates(
+          formData.description,
+          coordinates.lat,
+          coordinates.lng
+        );
+        setDuplicateData(result);
+      } catch (error) {
+        console.error('Duplicate check failed:', error);
+        // Don't block submission on duplicate check failure
+        setDuplicateData(null);
+      } finally {
+        setIsCheckingDuplicates(false);
+      }
+    }, DUPLICATE_CHECK_DEBOUNCE_MS);
+    
+    return () => {
+      if (duplicateCheckTimeoutRef.current) {
+        clearTimeout(duplicateCheckTimeoutRef.current);
+      }
+    };
+  }, [coordinates, formData.description]);
 
   // ===========================================================================
   // VALIDATION
@@ -95,6 +154,11 @@ const ComplaintForm = ({
       newErrors.description = `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters`;
     }
 
+    // Location validation (required)
+    if (!coordinates) {
+      newErrors.location = 'Please pin the location on the map';
+    }
+
     // Image validation (if selected)
     if (imageFile) {
       if (!ACCEPTED_IMAGE_TYPES.includes(imageFile.type)) {
@@ -106,7 +170,7 @@ const ComplaintForm = ({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, imageFile]);
+  }, [formData, imageFile, coordinates]);
 
   // ===========================================================================
   // HANDLERS
@@ -204,12 +268,17 @@ const ComplaintForm = ({
         subject: formData.subject.trim(),
         description: formData.description.trim(),
         location: formData.location.trim() || null,
+        latitude: coordinates?.lat || null,
+        longitude: coordinates?.lng || null,
       }, imageFile);
 
       setSubmitStatus('success');
       
       // Reset form after successful submission
       setFormData({ subject: '', description: '', location: '' });
+      setCoordinates(null);
+      setShowMap(false);
+      setDuplicateData(null);
       handleRemoveImage();
     } catch (error) {
       console.error('Failed to submit complaint:', error);
@@ -316,11 +385,10 @@ const ComplaintForm = ({
           </div>
 
           {/* Location Field */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Label htmlFor="location" className="flex items-center gap-1">
               <MapPin className="h-4 w-4" />
-              Location
-              <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+              Location <span className="text-red-500">*</span>
             </Label>
             <Input
               id="location"
@@ -330,7 +398,68 @@ const ComplaintForm = ({
               onChange={handleInputChange}
               disabled={isLoading}
             />
+            
+            {/* Map Pin Toggle */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={showMap ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowMap(!showMap)}
+                disabled={isLoading}
+              >
+                <Map className="h-4 w-4 mr-1" />
+                {showMap ? 'Hide Map' : '📍 Pick Location on Map'}
+              </Button>
+              {coordinates ? (
+                <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Location pinned
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  Click the button to pin your complaint location
+                </span>
+              )}
+            </div>
+            {errors.location && (
+              <p className="text-sm text-red-500">{errors.location}</p>
+            )}
+            
+            {/* Location Picker Map */}
+            {showMap && (
+              <LocationPicker
+                value={coordinates}
+                onChange={setCoordinates}
+                onClear={() => setCoordinates(null)}
+                disabled={isLoading}
+              />
+            )}
           </div>
+
+          {/* Duplicate Warning */}
+          {(isCheckingDuplicates || (duplicateData?.hasPotentialDuplicates && !duplicatesDismissed)) && (
+            <DuplicateWarning
+              duplicates={duplicateData}
+              isLoading={isCheckingDuplicates}
+              onDismiss={() => setDuplicatesDismissed(true)}
+              userId={userId}
+              userLocation={coordinates}
+              onUpvoteSuccess={(complaintId) => {
+                // User upvoted an existing complaint
+                setSubmitStatus('upvoted');
+                setDuplicatesDismissed(true);
+              }}
+            />
+          )}
+
+          {/* Upvote Success Message */}
+          {submitStatus === 'upvoted' && (
+            <div className="flex items-center gap-2 p-3 rounded-md bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
+              <CheckCircle2 className="h-5 w-5" />
+              <span>Thanks! You've supported an existing complaint. No need to create a duplicate.</span>
+            </div>
+          )}
 
           {/* Image Upload Section */}
           <div className="space-y-2">

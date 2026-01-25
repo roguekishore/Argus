@@ -418,6 +418,8 @@ public class ComplaintService {
             .title(complaint.getTitle())
             .description(complaint.getDescription())
             .location(complaint.getLocation())
+            .latitude(complaint.getLatitude())
+            .longitude(complaint.getLongitude())
             .status(complaint.getStatus())
             .createdTime(complaint.getCreatedTime())
             .citizenId(complaint.getCitizenId())
@@ -435,6 +437,7 @@ public class ComplaintService {
             .imageMimeType(complaint.getImageMimeType())
             .imageAnalysis(complaint.getImageAnalysis())
             .imageAnalyzedAt(complaint.getImageAnalyzedAt())
+            .upvoteCount(complaint.getUpvoteCount() != null ? complaint.getUpvoteCount() : 0)
             .build();
     }
 
