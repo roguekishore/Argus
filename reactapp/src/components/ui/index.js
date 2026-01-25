@@ -9,3 +9,34 @@ export { Skeleton } from "./skeleton";
 export { Separator } from "./separator";
 export { ScrollArea } from "./scroll-area";
 export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
+export { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "./sheet";
+export { 
+  Breadcrumb, 
+  BreadcrumbList, 
+  BreadcrumbItem, 
+  BreadcrumbLink, 
+  BreadcrumbPage, 
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis 
+} from "./breadcrumb";
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
+export {
+  Sidebar,
+  SidebarProvider,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  SidebarTrigger,
+  SidebarRail,
+  SidebarInset,
+  useSidebar,
+} from "./sidebar";

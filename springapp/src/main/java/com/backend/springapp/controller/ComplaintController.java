@@ -164,68 +164,22 @@ public class ComplaintController {
     }
 
     // ==================== STATUS CHANGE ====================
-
-    /**
-     * Change complaint status
-     * PUT /api/complaints/{complaintId}/status?status=IN_PROGRESS
-     */
-    @PutMapping("/{complaintId}/status")
-    public ResponseEntity<Complaint> changeStatus(
-            @PathVariable Long complaintId,
-            @RequestParam ComplaintStatus status) {
-        Complaint updated = complaintService.changeStatus(complaintId, status);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * Start work on complaint (staff)
-     * PUT /api/complaints/{complaintId}/start
-     */
-    @PutMapping("/{complaintId}/start")
-    public ResponseEntity<Complaint> startWork(@PathVariable Long complaintId) {
-        Complaint updated = complaintService.startWork(complaintId);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * Resolve complaint (staff)
-     * PUT /api/complaints/{complaintId}/resolve
-     */
-    @PutMapping("/{complaintId}/resolve")
-    public ResponseEntity<Complaint> resolveComplaint(@PathVariable Long complaintId) {
-        Complaint updated = complaintService.resolveComplaint(complaintId);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * Close complaint (after citizen feedback or auto)
-     * PUT /api/complaints/{complaintId}/close
-     */
-    @PutMapping("/{complaintId}/close")
-    public ResponseEntity<Complaint> closeComplaint(@PathVariable Long complaintId) {
-        Complaint updated = complaintService.closeComplaint(complaintId);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * Hold complaint
-     * PUT /api/complaints/{complaintId}/hold
-     */
-    @PutMapping("/{complaintId}/hold")
-    public ResponseEntity<Complaint> holdComplaint(@PathVariable Long complaintId) {
-        Complaint updated = complaintService.holdComplaint(complaintId);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * Cancel complaint
-     * PUT /api/complaints/{complaintId}/cancel
-     */
-    @PutMapping("/{complaintId}/cancel")
-    public ResponseEntity<Complaint> cancelComplaint(@PathVariable Long complaintId) {
-        Complaint updated = complaintService.cancelComplaint(complaintId);
-        return ResponseEntity.ok(updated);
-    }
+    // 
+    // NOTE: State transition endpoints have been moved to ComplaintStateController
+    // which provides proper RBAC enforcement and state machine validation.
+    // 
+    // Use these endpoints instead:
+    //   PUT /api/complaints/{id}/state           - Generic state transition
+    //   PUT /api/complaints/{id}/start           - FILED → IN_PROGRESS (SYSTEM only)
+    //   PUT /api/complaints/{id}/resolve         - IN_PROGRESS → RESOLVED (STAFF, DEPT_HEAD)
+    //   PUT /api/complaints/{id}/close           - RESOLVED → CLOSED (CITIZEN, SYSTEM)
+    //   PUT /api/complaints/{id}/cancel          - Any → CANCELLED (CITIZEN, ADMIN)
+    //   GET /api/complaints/{id}/allowed-transitions - Get valid next states for UI
+    //
+    // System endpoints (no auth required):
+    //   PUT /api/complaints/{id}/system/start    - AI starts work on complaint
+    //   PUT /api/complaints/{id}/system/close    - Auto-close after timeout
+    //
 
     // ==================== CITIZEN FEEDBACK ====================
 

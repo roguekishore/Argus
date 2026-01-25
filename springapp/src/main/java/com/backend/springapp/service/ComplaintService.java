@@ -210,7 +210,7 @@ public class ComplaintService {
         }
         
         complaint.setStaffId(staffId);
-        complaint.setStatus(ComplaintStatus.OPEN);
+        complaint.setStatus(ComplaintStatus.IN_PROGRESS);
         complaint.setStartTime(LocalDateTime.now());
         complaint.setUpdatedTime(LocalDateTime.now());
         
