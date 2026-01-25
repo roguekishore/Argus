@@ -47,6 +47,7 @@ public class DataInitializer implements CommandLineRunner {
         initializeCategories();
         initializeSLAConfigs();
         initializeSampleStaff();
+        initializeCitizenUser();
     }
 
     /**
@@ -184,7 +185,21 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("✓ SLA configurations initialized successfully");
         }
     }
-
+    /**
+     * Pre-populate a sample citizen user for testing.
+     */
+    private void initializeCitizenUser() {
+        if (userRepository.findByUserType(UserType.CITIZEN).isEmpty()) {
+            User citizen = new User();
+            citizen.setName("Test Citizen");
+            citizen.setEmail("citizen@gmail.com");
+            citizen.setMobile("9876543000");
+            citizen.setPassword(DEFAULT_PASSWORD);
+            citizen.setUserType(UserType.CITIZEN);
+            userRepository.save(citizen);
+            System.out.println("✓ Citizen user initialized successfully");
+        }
+    }
     /**
      * Pre-populate sample staff and department heads for testing.
      * Each department gets 3 staff members and 1 department head.

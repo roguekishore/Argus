@@ -1,0 +1,9 @@
+user - file a complaint, see the complaints
+
+admin - staffs & heads, departments, categories, slas, complaints, escalations
+superadmin - users, departments, categories, slas, complaints, escalations
+municipal - staffs & heads, departments, categories, slas, complaints, escalations
+dept head - staffs, department complaints, escalations
+staff - assigned complaints
+
+this is my planned dashboard contents for each user type. there are certain permissions to take care of
