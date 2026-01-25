@@ -1,5 +1,6 @@
 package com.backend.springapp.controller;
 
+import com.backend.springapp.dto.request.UpdateFiledDateRequest;
 import com.backend.springapp.dto.response.ComplaintResponseDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
@@ -10,7 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/complaints")
@@ -219,5 +222,55 @@ public class ComplaintController {
             @RequestParam Integer slaDays) {
         Complaint updated = complaintService.manualSlaChange(complaintId, slaDays);
         return ResponseEntity.ok(updated);
+    }
+
+    // ============================================================
+    // ⚠️  TEST-ONLY ENDPOINTS - NOT FOR PRODUCTION USE  ⚠️
+    // ============================================================
+
+    /**
+     * ============================================================
+     * ⚠️  TEST-ONLY: Override complaint filed date  ⚠️
+     * ============================================================
+     * 
+     * PATCH /api/complaints/{complaintId}/test/filed-date
+     * 
+     * PURPOSE:
+     * Allows backdating a complaint's createdTime for testing escalation logic.
+     * Since @CreationTimestamp sets createdTime automatically on insert,
+     * this endpoint provides a way to simulate overdue complaints.
+     * 
+     * TEST SCENARIO EXAMPLE:
+     * 1. Create complaint → createdTime = today, slaDeadline = today + 5 days
+     * 2. PATCH filed-date to 10 days ago
+     * 3. Now: createdTime = 10 days ago, slaDeadline = 5 days ago
+     * 4. Trigger escalation → should escalate to L1 or L2
+     * 
+     * REQUEST BODY:
+     * {
+     *   "filedDate": "2026-01-10T10:00:00",
+     *   "recalculateSlaDeadline": true  // optional, default true
+     * }
+     * 
+     * SECURITY WARNING:
+     * This endpoint should be DISABLED or SECURED in production.
+     * Consider restricting to dev/test profiles only.
+     * 
+     * @param complaintId The complaint to modify
+     * @param request Contains filedDate and optional recalculation flag
+     * @return Summary of changes made
+     */
+    @PatchMapping("/{complaintId}/test/filed-date")
+    public ResponseEntity<Map<String, Object>> updateFiledDateForTesting(
+            @PathVariable Long complaintId,
+            @Valid @RequestBody UpdateFiledDateRequest request) {
+        
+        Map<String, Object> result = complaintService.updateFiledDateForTesting(
+                complaintId, 
+                request.getFiledDate(),
+                request.getRecalculateSlaDeadline()
+        );
+        
+        return ResponseEntity.ok(result);
     }
 }

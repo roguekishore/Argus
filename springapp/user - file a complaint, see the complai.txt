@@ -1,9 +1,14 @@
 user - file a complaint, see the complaints
 
-admin - staffs & heads, departments, categories, slas, complaints, escalations
-superadmin - users, departments, categories, slas, complaints, escalations
-municipal - staffs & heads, departments, categories, slas, complaints, escalations
+admin - view all staffs & heads, all departments, all categories, all slas, all complaints, all escalations, can edit or add users, departments,heads,categories,slas,manually escalate a complaint, cannot change the state of complaints
+
+superadmin - edit or add all users including admin, departments, categories, slas, complaints, escalations basically control over everything
+
+municipal commissioner - all permissions of admin excluding that the commissioner can only see the escalations
+
 dept head - staffs, department complaints, escalations
 staff - assigned complaints
 
-this is my planned dashboard contents for each user type. there are certain permissions to take care of
+this is my planned dashboard contents for each user type. there are certain permissions to take care of.
+
+
