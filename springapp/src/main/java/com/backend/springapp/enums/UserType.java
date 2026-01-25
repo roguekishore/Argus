@@ -5,5 +5,6 @@ public enum UserType {
     ADMIN,
     STAFF,
     DEPT_HEAD,
-    SUPER_ADMIN
+    MUNICIPAL_COMMISSIONER,
+    SUPER_ADMIN,
 }

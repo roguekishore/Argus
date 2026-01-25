@@ -26,6 +26,8 @@ public class Department {
 
     @OneToMany(mappedBy = "department")
     private List<User> departmentMembers;
+
+    
     
     // Helper method to get department head
     public User getDepartmentHead() {
