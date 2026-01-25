@@ -51,6 +51,13 @@ public class WhatsAppTools {
      * Register a new citizen user
      */
     public UserInfo registerUser(String name, String phoneNumber) {
+        return registerUser(name, phoneNumber, null);
+    }
+    
+    /**
+     * Register a new citizen user with optional email
+     */
+    public UserInfo registerUser(String name, String phoneNumber, String email) {
         // Check if already exists
         if (userRepository.findByMobile(phoneNumber).isPresent()) {
             return getUserByPhone(phoneNumber);
@@ -59,11 +66,14 @@ public class WhatsAppTools {
         User user = new User();
         user.setName(name);
         user.setMobile(phoneNumber);
+        if (email != null && !email.isBlank()) {
+            user.setEmail(email);
+        }
         user.setUserType(UserType.CITIZEN);
         user.setPassword("whatsapp_user_" + System.currentTimeMillis()); // Placeholder password
         
         User saved = userRepository.save(user);
-        log.info("Registered new WhatsApp user: {} ({})", name, phoneNumber);
+        log.info("Registered new user: {} ({}) email: {}", name, phoneNumber, email != null ? email : "none");
         
         return new UserInfo(true, saved.getUserId(), saved.getName(), saved.getMobile());
     }
@@ -104,10 +114,10 @@ public class WhatsAppTools {
                 savedDTO.getComplaintId(),
                 displayId,
                 savedDTO.getCategoryName() != null ? savedDTO.getCategoryName() : "OTHER",
-                savedDTO.getPriority() != null ? savedDTO.getPriority().name() : "MEDIUM",
-                savedDTO.getSlaDaysAssigned() != null ? savedDTO.getSlaDaysAssigned() : 3,
                 savedDTO.getDepartmentName() != null ? savedDTO.getDepartmentName() : "General",
-                savedDTO.getSlaDeadline() != null ? savedDTO.getSlaDeadline().toString() : "TBD"
+                savedDTO.getSlaDaysAssigned() != null ? savedDTO.getSlaDaysAssigned() : 3,
+                savedDTO.getSlaDeadline() != null ? savedDTO.getSlaDeadline().toString() : "TBD",
+                null // no error
             );
             
         } catch (Exception e) {
@@ -204,12 +214,16 @@ public class WhatsAppTools {
     public record ComplaintResult(
         boolean success,
         Long complaintId,
+        String displayId,
+        String category,
+        String department,
+        int slaDays,
+        String deadline,
         String error
     ) {
-        public ComplaintResult(boolean success, Long complaintId, String displayId, 
-                String category, String priority, int slaDays, String department, String deadline) {
-            this(success, complaintId, null);
-            // Store additional info - in practice, use a proper class
+        // Failure constructor
+        public ComplaintResult(boolean success, Long complaintId, String error) {
+            this(success, complaintId, null, null, null, 0, null, error);
         }
     }
     

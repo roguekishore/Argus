@@ -7,7 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Webhook controller for Twilio WhatsApp messages.
@@ -54,7 +57,7 @@ public class WhatsAppWebhookController {
             @RequestParam(value = "ProfileName", required = false) String profileName,
             @RequestParam(value = "WaId", required = false) String waId
     ) {
-        log.info("Received WhatsApp message from: {} | Body: {}", from, body);
+        log.info("📩 Received WhatsApp message from: {} | Body: {}", from, body);
         
         // Build message object
         WhatsAppMessage message = WhatsAppMessage.builder()
@@ -73,20 +76,35 @@ public class WhatsAppWebhookController {
             .waId(waId)
             .build();
         
+        // Return IMMEDIATELY to Twilio (avoid 15-sec timeout)
+        // Process async and send response via Twilio API
+        CompletableFuture.runAsync(() -> processAndReplyAsync(message, from));
+        
+        log.info("📤 Returning empty TwiML immediately, will send response async");
+        return ResponseEntity.ok(twilioService.generateEmptyTwimlResponse());
+    }
+    
+    /**
+     * Process message asynchronously and send reply via Twilio API
+     * This avoids the 15-second webhook timeout for slow AI models
+     */
+    private void processAndReplyAsync(WhatsAppMessage message, String replyTo) {
         try {
-            // Process message and get response
+            // Process message with AI (can take 20-60 seconds for thinking models)
             String response = agentService.processMessage(message);
             
-            // Return TwiML response (synchronous reply)
-            String twiml = twilioService.generateTwimlResponse(response);
-            return ResponseEntity.ok(twiml);
+            // Send response via Twilio API (not TwiML)
+            String sid = twilioService.sendMessage(replyTo, response);
+            if (sid != null) {
+                log.info("✅ Async reply sent to {}, SID: {}", replyTo, sid);
+            } else {
+                log.error("❌ Failed to send async reply to {}", replyTo);
+            }
             
         } catch (Exception e) {
-            log.error("Error processing WhatsApp message: {}", e.getMessage(), e);
-            
-            String errorResponse = "Sorry, something went wrong. Please try again.";
-            String twiml = twilioService.generateTwimlResponse(errorResponse);
-            return ResponseEntity.ok(twiml);
+            log.error("❌ Error in async processing: {}", e.getMessage(), e);
+            // Try to send error message
+            twilioService.sendMessage(replyTo, "Sorry, something went wrong. Please try again.");
         }
     }
     
