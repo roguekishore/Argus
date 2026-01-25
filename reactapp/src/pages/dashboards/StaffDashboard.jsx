@@ -1,20 +1,47 @@
-import React, { useState } from "react";
+/**
+ * StaffDashboard - Dashboard for Staff Members
+ * 
+ * ARCHITECTURE NOTES:
+ * - Primary focus: Assigned Complaints
+ * - Shows status, SLA deadline, priority, escalation badge (read-only)
+ * - Actions: Update status, add remarks, resolve
+ * - Uses shared ComplaintList and DashboardSection components
+ * 
+ * DATA FLOW:
+ * - useComplaints() fetches staff's assigned complaints automatically
+ * - Stats derived from actual complaint data
+ * - Actions delegated to hook methods
+ * 
+ * FUTURE EXTENSIBILITY:
+ * - Audit timeline: Add to complaint detail view
+ * - Notifications: Add NotificationPanel component in header
+ * - JWT: Auth abstracted via useAuth hook
+ */
+
+import React, { useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Badge } from "../../components/ui";
+import { Button } from "../../components/ui";
+import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { useUser } from "../../context/UserContext";
+import { useComplaints } from "../../hooks/useComplaints";
+import { useAuth } from "../../hooks/useAuth";
+import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
   FileText,
   Inbox,
-  Send,
-  CheckCircle2,
   Clock,
+  CheckCircle2,
   AlertTriangle,
-  Users,
-  BarChart3,
-  Settings,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 
-// Staff Menu Items
+// =============================================================================
+// MENU CONFIGURATION
+// Staff focuses on managing assigned complaints
+// =============================================================================
 const staffMenuItems = [
   {
     label: "Main",
@@ -25,19 +52,14 @@ const staffMenuItems = [
         icon: <LayoutDashboard className="h-4 w-4" />,
       },
       {
-        id: "complaints",
-        label: "Complaints",
+        id: "assigned",
+        label: "Assigned Complaints",
         icon: <FileText className="h-4 w-4" />,
         children: [
           {
-            id: "inbox",
-            label: "Inbox",
+            id: "all-assigned",
+            label: "All Assigned",
             icon: <Inbox className="h-4 w-4" />,
-          },
-          {
-            id: "assigned",
-            label: "Assigned to Me",
-            icon: <Send className="h-4 w-4" />,
           },
           {
             id: "in-progress",
@@ -45,42 +67,134 @@ const staffMenuItems = [
             icon: <Clock className="h-4 w-4" />,
           },
           {
-            id: "completed",
-            label: "Completed",
+            id: "resolved",
+            label: "Resolved",
             icon: <CheckCircle2 className="h-4 w-4" />,
           },
         ],
       },
       {
         id: "escalated",
-        label: "Escalated",
+        label: "Escalated (View Only)",
         icon: <AlertTriangle className="h-4 w-4" />,
-      },
-    ],
-  },
-  {
-    label: "Reports",
-    items: [
-      {
-        id: "my-performance",
-        label: "My Performance",
-        icon: <BarChart3 className="h-4 w-4" />,
       },
     ],
   },
 ];
 
+// =============================================================================
+// STAFF DASHBOARD COMPONENT
+// =============================================================================
 const StaffDashboard = () => {
+  const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
   
-  const user = {
-    name: "Staff Member",
-    email: "staff@municipality.gov",
-    role: "Staff",
-  };
+  // Context and hooks
+  const { userId, role, email, name } = useUser();
+  const { logout } = useAuth();
+  const {
+    complaints,
+    stats,
+    isLoading,
+    error,
+    refresh,
+    resolveComplaint,
+    updateComplaintState,
+  } = useComplaints();
 
-  const getBreadcrumbs = () => {
-    const breadcrumbs = [{ label: "Dashboard", href: "/" }];
+  // ==========================================================================
+  // DERIVED DATA
+  // Stats computed from actual complaint data
+  // ==========================================================================
+  const displayStats = useMemo(() => [
+    { 
+      title: "Total Assigned", 
+      value: stats.total?.toString() || "0", 
+      description: "All your assignments",
+      icon: <Inbox className="h-5 w-5" /> 
+    },
+    { 
+      title: "In Progress", 
+      value: stats.inProgress?.toString() || "0", 
+      description: "Currently working",
+      icon: <Clock className="h-5 w-5 text-yellow-500" /> 
+    },
+    { 
+      title: "Resolved", 
+      value: stats.resolved?.toString() || "0", 
+      description: "Pending citizen closure",
+      icon: <CheckCircle2 className="h-5 w-5 text-green-500" /> 
+    },
+    { 
+      title: "Closed", 
+      value: stats.closed?.toString() || "0", 
+      description: "Completed",
+      icon: <TrendingUp className="h-5 w-5 text-blue-500" /> 
+    },
+  ], [stats]);
+
+  // Escalated complaints count for badge display
+  const escalatedCount = useMemo(() => 
+    complaints.filter(c => c.escalationLevel > 0).length
+  , [complaints]);
+
+  // Filter complaints based on active menu item
+  const filteredComplaints = useMemo(() => {
+    switch (activeItem) {
+      case 'in-progress':
+        return complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS);
+      case 'resolved':
+        return complaints.filter(c => 
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+        );
+      case 'escalated':
+        return complaints.filter(c => c.escalationLevel > 0);
+      case 'all-assigned':
+      default:
+        return complaints;
+    }
+  }, [complaints, activeItem]);
+
+  // ==========================================================================
+  // ACTION HANDLERS
+  // Staff can: resolve complaints, update status, add remarks
+  // ==========================================================================
+  
+  // Resolve a complaint (mark as fixed)
+  const handleResolveComplaint = useCallback(async (complaintId) => {
+    try {
+      await resolveComplaint(complaintId);
+    } catch (err) {
+      console.error('Failed to resolve complaint:', err);
+    }
+  }, [resolveComplaint]);
+
+  // Update complaint status (e.g., FILED → IN_PROGRESS)
+  const handleUpdateStatus = useCallback(async (complaintId, newStatus) => {
+    try {
+      await updateComplaintState(complaintId, newStatus);
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    }
+  }, [updateComplaintState]);
+
+  // View complaint details (for adding remarks, viewing history)
+  const handleViewDetails = useCallback((complaint) => {
+    navigate(`/dashboard/staff/complaints/${complaint.complaintId || complaint.id}`);
+  }, [navigate]);
+
+  // Logout
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  // ==========================================================================
+  // BREADCRUMB GENERATION
+  // ==========================================================================
+  const getBreadcrumbs = useCallback(() => {
+    const breadcrumbs = [{ label: "Dashboard", href: "/dashboard/staff" }];
+    
     if (activeItem !== "dashboard") {
       for (const group of staffMenuItems) {
         for (const item of group.items) {
@@ -99,68 +213,220 @@ const StaffDashboard = () => {
       }
     }
     return breadcrumbs;
+  }, [activeItem]);
+
+  // Layout user object
+  const layoutUser = {
+    name: name || 'Staff Member',
+    email: email || 'staff@municipality.gov',
+    role: ROLE_DISPLAY_NAMES[role] || 'Staff',
   };
 
-  const stats = [
-    { title: "Inbox", value: "15", icon: <Inbox className="h-5 w-5" /> },
-    { title: "In Progress", value: "8", icon: <Clock className="h-5 w-5 text-yellow-500" /> },
-    { title: "Completed Today", value: "5", icon: <CheckCircle2 className="h-5 w-5 text-green-500" /> },
-    { title: "Escalated", value: "2", icon: <AlertTriangle className="h-5 w-5 text-red-500" /> },
-  ];
+  // ==========================================================================
+  // RENDER CONTENT BASED ON ACTIVE ITEM
+  // ==========================================================================
+  const renderContent = () => {
+    switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT LISTS (All Assigned, In Progress, Resolved)
+      // -----------------------------------------------------------------------
+      case 'all-assigned':
+      case 'in-progress':
+      case 'resolved':
+        const titles = {
+          'all-assigned': 'All Assigned Complaints',
+          'in-progress': 'In Progress',
+          'resolved': 'Resolved Complaints',
+        };
+        const descriptions = {
+          'all-assigned': 'All complaints assigned to you',
+          'in-progress': 'Complaints you are currently working on',
+          'resolved': 'Complaints you have resolved, pending citizen closure',
+        };
+        const emptyMessages = {
+          'all-assigned': 'No complaints assigned to you yet.',
+          'in-progress': 'No complaints in progress.',
+          'resolved': 'No resolved complaints yet.',
+        };
 
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title={titles[activeItem]}
+              description={descriptions[activeItem]}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage={emptyMessages[activeItem]}
+              onResolve={handleResolveComplaint}
+              onViewDetails={handleViewDetails}
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // ESCALATED COMPLAINTS (Read-Only View)
+      // Staff can see escalations but cannot act on them
+      // -----------------------------------------------------------------------
+      case 'escalated':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Escalated Complaints"
+              description="Complaints that have been escalated - view only"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            {/* Info banner - Staff cannot act on escalated complaints */}
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="font-medium">Read-only view</span>
+              </div>
+              <p className="text-sm mt-1">
+                Escalated complaints require attention from your Department Head or higher authority.
+              </p>
+            </div>
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage="No escalated complaints."
+              onViewDetails={handleViewDetails}
+              // Note: No action handlers passed - read-only
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // DASHBOARD (DEFAULT) - Overview
+      // -----------------------------------------------------------------------
+      default:
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Staff Dashboard"
+              description="Manage and resolve your assigned complaints"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+
+            {/* Stats Grid */}
+            <StatsGrid stats={displayStats} />
+
+            {/* Escalation Alert (if any) */}
+            {escalatedCount > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-md dark:bg-red-900/20 dark:border-red-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-red-800 dark:text-red-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">
+                      {escalatedCount} complaint{escalatedCount > 1 ? 's' : ''} escalated
+                    </span>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveItem('escalated')}
+                  >
+                    View Escalations
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Active Complaints - In Progress */}
+            <DashboardSection
+              title="Complaints In Progress"
+              description="Complaints you are currently working on"
+              action={
+                <Button 
+                  variant="link" 
+                  size="sm"
+                  onClick={() => setActiveItem('all-assigned')}
+                >
+                  View All
+                </Button>
+              }
+            >
+              <ComplaintList
+                complaints={complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS).slice(0, 5)}
+                isLoading={isLoading}
+                emptyMessage="No complaints in progress. Pick up a new assignment!"
+                compact={true}
+                onResolve={handleResolveComplaint}
+                onViewDetails={handleViewDetails}
+              />
+            </DashboardSection>
+
+            {/* Pending Assignment - FILED status */}
+            <DashboardSection
+              title="Pending Your Action"
+              description="Newly assigned complaints awaiting your attention"
+            >
+              <ComplaintList
+                complaints={complaints.filter(c => c.state === COMPLAINT_STATES.FILED).slice(0, 5)}
+                isLoading={isLoading}
+                emptyMessage="No pending complaints."
+                compact={true}
+                onViewDetails={handleViewDetails}
+              />
+            </DashboardSection>
+          </div>
+        );
+    }
+  };
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
     <DashboardLayout
       menuItems={staffMenuItems}
-      user={user}
+      user={layoutUser}
       breadcrumbs={getBreadcrumbs()}
       activeItem={activeItem}
       setActiveItem={setActiveItem}
-      onLogout={() => console.log("Logout")}
+      onLogout={handleLogout}
     >
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Staff Dashboard</h2>
-          <p className="text-muted-foreground">Manage and resolve assigned complaints.</p>
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+          {error}
         </div>
-        
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                {stat.icon}
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Assignments</CardTitle>
-            <CardDescription>Complaints assigned to you</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <p className="font-medium">Complaint #{2024100 + i}</p>
-                    <p className="text-sm text-muted-foreground">Street light not working - Ward {i}</p>
-                  </div>
-                  <Badge variant={i === 1 ? "destructive" : "secondary"}>
-                    {i === 1 ? "High Priority" : "Normal"}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
+      {renderContent()}
     </DashboardLayout>
   );
 };

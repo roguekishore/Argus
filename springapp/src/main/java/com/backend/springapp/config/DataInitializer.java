@@ -48,6 +48,8 @@ public class DataInitializer implements CommandLineRunner {
         initializeSLAConfigs();
         initializeSampleStaff();
         initializeCitizenUser();
+        initializeSuperAdminUser();
+        initializeMunicipalCommissionerUser();
     }
 
     /**
@@ -198,6 +200,38 @@ public class DataInitializer implements CommandLineRunner {
             citizen.setUserType(UserType.CITIZEN);
             userRepository.save(citizen);
             System.out.println("✓ Citizen user initialized successfully");
+        }
+    }
+
+    /**
+     * Pre-populate a superadmin user for testing.
+     */
+    private void initializeSuperAdminUser() {
+        if (userRepository.findByUserType(UserType.SUPER_ADMIN).isEmpty()) {
+            User superadmin = new User();
+            superadmin.setName("Super Admin");
+            superadmin.setEmail("superadmin@gmail.com");
+            superadmin.setMobile("9876540000");
+            superadmin.setPassword(DEFAULT_PASSWORD);
+            superadmin.setUserType(UserType.SUPER_ADMIN);
+            userRepository.save(superadmin);
+            System.out.println("✓ Superadmin user initialized successfully");
+        }
+    }
+
+    /**
+     * Pre-populate a municipal commissioner user for testing.
+     */
+    private void initializeMunicipalCommissionerUser() {
+        if (userRepository.findByUserType(UserType.MUNICIPAL_COMMISSIONER).isEmpty()) {
+            User commissioner = new User();
+            commissioner.setName("Municipal Commissioner");
+            commissioner.setEmail("commissioner@gmail.com");
+            commissioner.setMobile("9876549999");
+            commissioner.setPassword(DEFAULT_PASSWORD);
+            commissioner.setUserType(UserType.MUNICIPAL_COMMISSIONER);
+            userRepository.save(commissioner);
+            System.out.println("✓ Municipal Commissioner user initialized successfully");
         }
     }
     /**

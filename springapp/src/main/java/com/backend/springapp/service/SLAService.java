@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.backend.springapp.audit.AuditActorContext;
+import com.backend.springapp.audit.AuditService;
 import com.backend.springapp.exception.DuplicateResourceException;
 import com.backend.springapp.exception.ResourceNotFoundException;
 import com.backend.springapp.model.Category;
@@ -27,6 +29,9 @@ public class SLAService {
 
     @Autowired
     private DepartmentRepository departmentRepository;
+
+    @Autowired
+    private AuditService auditService;
 
     /**
      * Create SLA config for a category (Admin only)
@@ -83,6 +88,9 @@ public class SLAService {
         SLA existing = slaRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("SLA config not found with id: " + id));
 
+        // Capture old values for audit
+        String oldValue = buildSLASnapshot(existing);
+
         if (updatedSLA.getSlaDays() != null) {
             existing.setSlaDays(updatedSLA.getSlaDays());
         }
@@ -90,7 +98,20 @@ public class SLAService {
             existing.setBasePriority(updatedSLA.getBasePriority());
         }
 
-        return slaRepository.save(existing);
+        SLA saved = slaRepository.save(existing);
+        
+        // AUDIT: Record SLA configuration change
+        // Note: Using SYSTEM actor here as method doesn't have UserContext
+        // In production, pass UserContext from controller for proper attribution
+        auditService.recordSLAUpdate(
+            id,
+            oldValue,
+            buildSLASnapshot(saved),
+            AuditActorContext.system(),
+            "SLA configuration updated"
+        );
+
+        return saved;
     }
 
     /**
@@ -103,8 +124,29 @@ public class SLAService {
         Department department = departmentRepository.findById(departmentId)
             .orElseThrow(() -> new ResourceNotFoundException("Department not found with id: " + departmentId));
 
+        String oldDept = existing.getDepartment() != null ? existing.getDepartment().getName() : "null";
         existing.setDepartment(department);
-        return slaRepository.save(existing);
+        SLA saved = slaRepository.save(existing);
+        
+        // AUDIT: Record SLA department change
+        auditService.recordSLAUpdate(
+            slaId,
+            "department:" + oldDept,
+            "department:" + department.getName(),
+            AuditActorContext.system(),
+            "SLA department updated"
+        );
+        
+        return saved;
+    }
+    
+    /**
+     * Build a snapshot string of SLA config for audit logging.
+     */
+    private String buildSLASnapshot(SLA sla) {
+        return String.format("slaDays:%d,priority:%s", 
+            sla.getSlaDays(), 
+            sla.getBasePriority() != null ? sla.getBasePriority().name() : "null");
     }
 
     /**

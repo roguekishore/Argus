@@ -1,9 +1,12 @@
 package com.backend.springapp.service;
 
+import com.backend.springapp.audit.AuditActorContext;
+import com.backend.springapp.audit.AuditService;
 import com.backend.springapp.dto.response.StateTransitionResponse;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.exception.ResourceNotFoundException;
 import com.backend.springapp.model.Complaint;
+import com.backend.springapp.notification.NotificationService;
 import com.backend.springapp.repository.ComplaintRepository;
 import com.backend.springapp.security.UserContext;
 import com.backend.springapp.statemachine.ComplaintStateMachine;
@@ -40,12 +43,18 @@ public class ComplaintStateService {
     
     private final ComplaintRepository complaintRepository;
     private final StateTransitionService stateTransitionService;
+    private final AuditService auditService;
+    private final NotificationService notificationService;
     
     public ComplaintStateService(
             ComplaintRepository complaintRepository,
-            StateTransitionService stateTransitionService) {
+            StateTransitionService stateTransitionService,
+            AuditService auditService,
+            NotificationService notificationService) {
         this.complaintRepository = complaintRepository;
         this.stateTransitionService = stateTransitionService;
+        this.auditService = auditService;
+        this.notificationService = notificationService;
     }
     
     /**
@@ -95,6 +104,18 @@ public class ComplaintStateService {
         
         // Persist
         Complaint saved = complaintRepository.save(complaint);
+        
+        // AUDIT: Record the state transition
+        auditService.recordComplaintStateChange(
+            complaintId,
+            currentState.name(),
+            targetState.name(),
+            AuditActorContext.fromUserContext(userContext),
+            buildSuccessMessage(currentState, targetState)
+        );
+        
+        // NOTIFICATION: Send user notifications AFTER audit (best-effort)
+        sendStateChangeNotifications(saved, currentState, targetState);
         
         log.info("State transition completed: complaint={}, {} -> {}",
             complaintId, currentState, targetState);
@@ -247,6 +268,52 @@ public class ComplaintStateService {
             case CANCELLED -> "Complaint has been cancelled";
             default -> String.format("State changed from %s to %s", from, to);
         };
+    }
+    
+    /**
+     * Send notifications based on state change.
+     * 
+     * IMPORTANT: This is called AFTER audit logging.
+     * Notification failures are logged but don't affect the transaction.
+     * 
+     * @param complaint   The complaint that changed
+     * @param oldStatus   Previous status
+     * @param newStatus   New status
+     */
+    private void sendStateChangeNotifications(Complaint complaint, ComplaintStatus oldStatus, ComplaintStatus newStatus) {
+        Long citizenId = complaint.getCitizenId();
+        Long complaintId = complaint.getComplaintId();
+        String title = complaint.getTitle();
+        
+        // Always notify citizen about status changes
+        notificationService.notifyStatusChange(
+            citizenId,
+            complaintId,
+            title,
+            oldStatus != null ? oldStatus.name() : "NEW",
+            newStatus.name()
+        );
+        
+        // Special notifications based on target state
+        switch (newStatus) {
+            case RESOLVED:
+                // Citizen gets resolution notification
+                notificationService.notifyResolution(citizenId, complaintId, title);
+                // Also request rating after a short delay (could be async)
+                notificationService.requestRating(citizenId, complaintId, title);
+                break;
+                
+            case IN_PROGRESS:
+                // Notify assigned staff if any
+                if (complaint.getStaffId() != null) {
+                    notificationService.notifyAssignment(complaint.getStaffId(), complaintId, title);
+                }
+                break;
+                
+            default:
+                // Other states only get the generic status change notification
+                break;
+        }
     }
     
     /**

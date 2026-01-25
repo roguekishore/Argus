@@ -1,21 +1,49 @@
-import React, { useState } from "react";
+/**
+ * DepartmentHeadDashboard - Dashboard for Department Heads
+ * 
+ * ARCHITECTURE NOTES:
+ * - Primary focus: Department Complaints & Escalations
+ * - Two main sections: All department complaints + Escalated complaints
+ * - Can reassign staff, resolve complaints
+ * - Read-only escalation visibility (cannot de-escalate)
+ * 
+ * DATA FLOW:
+ * - useComplaints() fetches department complaints automatically
+ * - Staff list fetched separately for reassignment
+ * - Actions delegated to hook methods
+ * 
+ * FUTURE EXTENSIBILITY:
+ * - Team performance metrics
+ * - Audit logs per complaint
+ * - Notification preferences
+ */
+
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Badge } from "../../components/ui";
+import { Button } from "../../components/ui";
+import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { useUser } from "../../context/UserContext";
+import { useComplaints } from "../../hooks/useComplaints";
+import { useAuth } from "../../hooks/useAuth";
+import { usersService } from "../../services";
+import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
   FileText,
-  Building,
   Users,
-  BarChart3,
-  TrendingUp,
-  AlertTriangle,
   Clock,
   CheckCircle2,
-  Settings,
-  PieChart,
+  AlertTriangle,
+  RefreshCw,
+  UserPlus,
+  Building,
 } from "lucide-react";
 
-// Department Head Menu Items
+// =============================================================================
+// MENU CONFIGURATION
+// Department heads focus on department oversight and escalations
+// =============================================================================
 const deptHeadMenuItems = [
   {
     label: "Overview",
@@ -28,30 +56,45 @@ const deptHeadMenuItems = [
     ],
   },
   {
-    label: "Department",
+    label: "Complaints",
     items: [
       {
-        id: "complaints",
+        id: "department-complaints",
         label: "Department Complaints",
         icon: <FileText className="h-4 w-4" />,
         children: [
           {
-            id: "all",
+            id: "all-complaints",
             label: "All Complaints",
             icon: <FileText className="h-4 w-4" />,
           },
           {
-            id: "escalated",
-            label: "Escalated",
-            icon: <AlertTriangle className="h-4 w-4" />,
+            id: "unassigned",
+            label: "Unassigned",
+            icon: <UserPlus className="h-4 w-4" />,
+          },
+          {
+            id: "in-progress",
+            label: "In Progress",
+            icon: <Clock className="h-4 w-4" />,
           },
           {
             id: "overdue",
             label: "Overdue",
-            icon: <Clock className="h-4 w-4" />,
+            icon: <AlertTriangle className="h-4 w-4" />,
           },
         ],
       },
+      {
+        id: "escalations",
+        label: "Escalations",
+        icon: <AlertTriangle className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Team",
+    items: [
       {
         id: "team",
         label: "Team Management",
@@ -59,44 +102,162 @@ const deptHeadMenuItems = [
       },
     ],
   },
-  {
-    label: "Analytics",
-    items: [
-      {
-        id: "reports",
-        label: "Reports",
-        icon: <BarChart3 className="h-4 w-4" />,
-      },
-      {
-        id: "analytics",
-        label: "Analytics",
-        icon: <PieChart className="h-4 w-4" />,
-      },
-    ],
-  },
-  {
-    label: "Settings",
-    items: [
-      {
-        id: "dept-settings",
-        label: "Department Settings",
-        icon: <Settings className="h-4 w-4" />,
-      },
-    ],
-  },
 ];
 
+// =============================================================================
+// DEPARTMENT HEAD DASHBOARD COMPONENT
+// =============================================================================
 const DepartmentHeadDashboard = () => {
+  const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
   
-  const user = {
-    name: "Dept. Head Name",
-    email: "depthead@municipality.gov",
-    role: "Department Head",
-  };
+  // Context and hooks
+  const { userId, role, email, name, departmentId } = useUser();
+  const { logout } = useAuth();
+  const {
+    complaints,
+    stats,
+    isLoading,
+    error,
+    refresh,
+    resolveComplaint,
+    assignStaff,
+    getUnassigned,
+  } = useComplaints();
 
-  const getBreadcrumbs = () => {
-    const breadcrumbs = [{ label: "Dashboard", href: "/" }];
+  // Local state for department staff
+  const [departmentStaff, setDepartmentStaff] = useState([]);
+  const [unassignedComplaints, setUnassignedComplaints] = useState([]);
+
+  // Fetch department staff for reassignment
+  useEffect(() => {
+    const fetchStaff = async () => {
+      if (departmentId) {
+        try {
+          const staff = await usersService.getDepartmentStaff(departmentId);
+          setDepartmentStaff(Array.isArray(staff) ? staff : []);
+        } catch (err) {
+          console.error('Failed to fetch staff:', err);
+        }
+      }
+    };
+    fetchStaff();
+  }, [departmentId]);
+
+  // Fetch unassigned complaints
+  useEffect(() => {
+    const fetchUnassigned = async () => {
+      if (departmentId) {
+        try {
+          const data = await getUnassigned();
+          setUnassignedComplaints(Array.isArray(data) ? data : []);
+        } catch (err) {
+          console.error('Failed to fetch unassigned:', err);
+        }
+      }
+    };
+    fetchUnassigned();
+  }, [departmentId, getUnassigned]);
+
+  // ==========================================================================
+  // DERIVED DATA
+  // ==========================================================================
+  const displayStats = useMemo(() => [
+    { 
+      title: "Total Complaints", 
+      value: stats.total?.toString() || "0", 
+      description: "In your department",
+      icon: <FileText className="h-5 w-5" /> 
+    },
+    { 
+      title: "Unassigned", 
+      value: stats.unassigned?.toString() || unassignedComplaints.length.toString(), 
+      description: "Need staff assignment",
+      icon: <UserPlus className="h-5 w-5 text-orange-500" /> 
+    },
+    { 
+      title: "In Progress", 
+      value: stats.inProgress?.toString() || "0", 
+      description: "Being worked on",
+      icon: <Clock className="h-5 w-5 text-yellow-500" /> 
+    },
+    { 
+      title: "Escalated", 
+      value: complaints.filter(c => c.escalationLevel > 0).length.toString(), 
+      description: "Needs attention",
+      icon: <AlertTriangle className="h-5 w-5 text-red-500" /> 
+    },
+  ], [stats, complaints, unassignedComplaints]);
+
+  // Filter complaints based on active menu item
+  const filteredComplaints = useMemo(() => {
+    switch (activeItem) {
+      case 'unassigned':
+        return unassignedComplaints;
+      case 'in-progress':
+        return complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS);
+      case 'overdue':
+        return complaints.filter(c => {
+          const deadline = new Date(c.slaDeadline || c.slaPromiseDate);
+          return deadline < new Date() && 
+                 ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(c.state);
+        });
+      case 'escalations':
+        return complaints.filter(c => c.escalationLevel > 0);
+      case 'all-complaints':
+      default:
+        return complaints;
+    }
+  }, [complaints, unassignedComplaints, activeItem]);
+
+  // ==========================================================================
+  // ACTION HANDLERS
+  // ==========================================================================
+  
+  // Resolve a complaint
+  const handleResolveComplaint = useCallback(async (complaintId) => {
+    try {
+      await resolveComplaint(complaintId);
+    } catch (err) {
+      console.error('Failed to resolve complaint:', err);
+    }
+  }, [resolveComplaint]);
+
+  // Reassign complaint to different staff
+  const handleReassign = useCallback(async (complaint) => {
+    // TODO: Open a staff selection modal
+    // For now, using a simple prompt
+    const staffOptions = departmentStaff.map(s => `${s.id}: ${s.name}`).join('\n');
+    const staffId = window.prompt(`Select staff ID to assign:\n${staffOptions}`);
+    if (staffId) {
+      try {
+        await assignStaff(complaint.id, staffId);
+        // Refresh unassigned list
+        const data = await getUnassigned();
+        setUnassignedComplaints(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to assign staff:', err);
+      }
+    }
+  }, [departmentStaff, assignStaff, getUnassigned]);
+
+  // View complaint details
+  const handleViewDetails = useCallback((complaint) => {
+    navigate(`/dashboard/dept-head/complaints/${complaint.complaintId || complaint.id}`);
+  }, [navigate]);
+
+  // Logout
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  // ==========================================================================
+  // BREADCRUMB GENERATION
+  // ==========================================================================
+  const getBreadcrumbs = useCallback(() => {
+    const breadcrumbs = [{ label: "Dashboard", href: "/dashboard/dept-head" }];
+    
     if (activeItem !== "dashboard") {
       for (const group of deptHeadMenuItems) {
         for (const item of group.items) {
@@ -115,103 +276,262 @@ const DepartmentHeadDashboard = () => {
       }
     }
     return breadcrumbs;
+  }, [activeItem]);
+
+  // Layout user object
+  const layoutUser = {
+    name: name || 'Department Head',
+    email: email || 'depthead@municipality.gov',
+    role: ROLE_DISPLAY_NAMES[role] || 'Department Head',
   };
 
-  const stats = [
-    { title: "Total Complaints", value: "156", change: "+12%", icon: <FileText className="h-5 w-5" /> },
-    { title: "Resolution Rate", value: "87%", change: "+5%", icon: <TrendingUp className="h-5 w-5 text-green-500" /> },
-    { title: "Avg. Resolution Time", value: "2.3d", change: "-0.5d", icon: <Clock className="h-5 w-5 text-blue-500" /> },
-    { title: "Escalated", value: "12", change: "-3", icon: <AlertTriangle className="h-5 w-5 text-red-500" /> },
-  ];
+  // ==========================================================================
+  // RENDER CONTENT
+  // ==========================================================================
+  const renderContent = () => {
+    switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT LISTS
+      // -----------------------------------------------------------------------
+      case 'all-complaints':
+      case 'unassigned':
+      case 'in-progress':
+      case 'overdue':
+        const titles = {
+          'all-complaints': 'All Department Complaints',
+          'unassigned': 'Unassigned Complaints',
+          'in-progress': 'In Progress',
+          'overdue': 'Overdue Complaints',
+        };
+        const descriptions = {
+          'all-complaints': 'All complaints in your department',
+          'unassigned': 'Complaints that need staff assignment',
+          'in-progress': 'Complaints currently being worked on',
+          'overdue': 'Complaints that have exceeded their SLA deadline',
+        };
 
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title={titles[activeItem]}
+              description={descriptions[activeItem]}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage={`No ${activeItem.replace('-', ' ')} complaints.`}
+              onResolve={handleResolveComplaint}
+              onReassign={handleReassign}
+              onViewDetails={handleViewDetails}
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // ESCALATIONS (Read-Only visibility)
+      // -----------------------------------------------------------------------
+      case 'escalations':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Escalated Complaints"
+              description="Complaints that have been escalated within or beyond your department"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            {/* Info about escalation levels */}
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="font-medium">Escalation Levels</span>
+              </div>
+              <p className="text-sm mt-1">
+                <strong>Level 1:</strong> Escalated to you (Department Head) | 
+                <strong> Level 2+:</strong> Escalated to Admin/Commissioner
+              </p>
+            </div>
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage="No escalated complaints in your department."
+              onResolve={handleResolveComplaint}
+              onReassign={handleReassign}
+              onViewDetails={handleViewDetails}
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // TEAM MANAGEMENT
+      // -----------------------------------------------------------------------
+      case 'team':
+        return (
+          <DashboardSection
+            title="Team Management"
+            description={`Manage staff in your department (${departmentStaff.length} members)`}
+          >
+            {/* TODO: Integrate TeamList component */}
+            <div className="space-y-2">
+              {departmentStaff.length === 0 ? (
+                <p className="text-muted-foreground">No staff members found.</p>
+              ) : (
+                departmentStaff.map(staff => (
+                  <div key={staff.id} className="flex items-center justify-between p-3 border rounded-md">
+                    <div>
+                      <p className="font-medium">{staff.name}</p>
+                      <p className="text-sm text-muted-foreground">{staff.email}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // DASHBOARD (DEFAULT)
+      // -----------------------------------------------------------------------
+      default:
+        const escalatedComplaints = complaints.filter(c => c.escalationLevel > 0);
+        
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Department Head Dashboard"
+              description="Oversee your department's complaint handling"
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+
+            {/* Stats Grid */}
+            <StatsGrid stats={displayStats} />
+
+            {/* Escalation Alert (if any) */}
+            {escalatedComplaints.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-md dark:bg-red-900/20 dark:border-red-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-red-800 dark:text-red-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">
+                      {escalatedComplaints.length} escalated complaint{escalatedComplaints.length > 1 ? 's' : ''} require attention
+                    </span>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveItem('escalations')}
+                  >
+                    View Escalations
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Unassigned Complaints - Priority */}
+            {unassignedComplaints.length > 0 && (
+              <DashboardSection
+                title="Unassigned Complaints"
+                description="These complaints need staff assignment"
+                action={
+                  <Button 
+                    variant="link" 
+                    size="sm"
+                    onClick={() => setActiveItem('unassigned')}
+                  >
+                    View All ({unassignedComplaints.length})
+                  </Button>
+                }
+              >
+                <ComplaintList
+                  complaints={unassignedComplaints.slice(0, 3)}
+                  isLoading={isLoading}
+                  emptyMessage="All complaints are assigned."
+                  compact={true}
+                  onReassign={handleReassign}
+                  onViewDetails={handleViewDetails}
+                />
+              </DashboardSection>
+            )}
+
+            {/* Department Complaints Overview */}
+            <DashboardSection
+              title="Recent Department Complaints"
+              description="Latest complaints in your department"
+              action={
+                <Button 
+                  variant="link" 
+                  size="sm"
+                  onClick={() => setActiveItem('all-complaints')}
+                >
+                  View All
+                </Button>
+              }
+            >
+              <ComplaintList
+                complaints={complaints.slice(0, 5)}
+                isLoading={isLoading}
+                emptyMessage="No complaints in your department."
+                compact={true}
+                onResolve={handleResolveComplaint}
+                onReassign={handleReassign}
+                onViewDetails={handleViewDetails}
+              />
+            </DashboardSection>
+          </div>
+        );
+    }
+  };
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
     <DashboardLayout
       menuItems={deptHeadMenuItems}
-      user={user}
+      user={layoutUser}
       breadcrumbs={getBreadcrumbs()}
       activeItem={activeItem}
       setActiveItem={setActiveItem}
-      onLogout={() => console.log("Logout")}
+      onLogout={handleLogout}
     >
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Department Head Dashboard</h2>
-          <p className="text-muted-foreground">Water & Sanitation Department Overview</p>
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+          {error}
         </div>
-        
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                {stat.icon}
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground">
-                  <span className={stat.change.startsWith("+") ? "text-green-500" : stat.change.startsWith("-") && stat.title !== "Escalated" ? "text-red-500" : "text-green-500"}>
-                    {stat.change}
-                  </span> from last month
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Supervisor Performance</CardTitle>
-              <CardDescription>Monthly resolution statistics</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {["Supervisor A", "Supervisor B", "Supervisor C"].map((name, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
-                    <span className="font-medium">{name}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary rounded-full" 
-                          style={{ width: `${90 - i * 10}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-medium">{90 - i * 10}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Category Distribution</CardTitle>
-              <CardDescription>Complaints by category</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { name: "Water Supply", count: 45, color: "bg-blue-500" },
-                  { name: "Drainage", count: 32, color: "bg-green-500" },
-                  { name: "Sewage", count: 28, color: "bg-yellow-500" },
-                  { name: "Other", count: 15, color: "bg-gray-500" },
-                ].map((cat, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`h-3 w-3 rounded-full ${cat.color}`} />
-                      <span>{cat.name}</span>
-                    </div>
-                    <span className="font-medium">{cat.count}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
+      {renderContent()}
     </DashboardLayout>
   );
 };

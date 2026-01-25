@@ -65,6 +65,98 @@ public class ComplaintController {
         return ResponseEntity.ok(complaints);
     }
 
+    // ==================== DASHBOARD LISTING ENDPOINTS ====================
+
+    /**
+     * Get all complaints for a citizen
+     * GET /api/complaints/citizen/{citizenId}
+     */
+    @GetMapping("/citizen/{citizenId}")
+    public ResponseEntity<List<Complaint>> getComplaintsByCitizen(@PathVariable Long citizenId) {
+        List<Complaint> complaints = complaintService.getComplaintsByCitizen(citizenId);
+        return ResponseEntity.ok(complaints);
+    }
+
+    /**
+     * Get complaint stats for a citizen (for dashboard cards)
+     * GET /api/complaints/citizen/{citizenId}/stats
+     */
+    @GetMapping("/citizen/{citizenId}/stats")
+    public ResponseEntity<Map<String, Object>> getCitizenStats(@PathVariable Long citizenId) {
+        Map<String, Object> stats = complaintService.getCitizenStats(citizenId);
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * Get all complaints assigned to a staff member
+     * GET /api/complaints/staff/{staffId}
+     */
+    @GetMapping("/staff/{staffId}")
+    public ResponseEntity<List<Complaint>> getComplaintsByStaff(@PathVariable Long staffId) {
+        List<Complaint> complaints = complaintService.getComplaintsByStaff(staffId);
+        return ResponseEntity.ok(complaints);
+    }
+
+    /**
+     * Get complaint stats for a staff member (for dashboard cards)
+     * GET /api/complaints/staff/{staffId}/stats
+     */
+    @GetMapping("/staff/{staffId}/stats")
+    public ResponseEntity<Map<String, Object>> getStaffStats(@PathVariable Long staffId) {
+        Map<String, Object> stats = complaintService.getStaffStats(staffId);
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * Get all complaints for a department
+     * GET /api/complaints/department/{deptId}
+     */
+    @GetMapping("/department/{deptId}")
+    public ResponseEntity<List<Complaint>> getComplaintsByDepartment(@PathVariable Long deptId) {
+        List<Complaint> complaints = complaintService.getComplaintsByDepartment(deptId);
+        return ResponseEntity.ok(complaints);
+    }
+
+    /**
+     * Get unassigned complaints for a department (for dept head to assign)
+     * GET /api/complaints/department/{deptId}/unassigned
+     */
+    @GetMapping("/department/{deptId}/unassigned")
+    public ResponseEntity<List<Complaint>> getUnassignedComplaintsByDepartment(@PathVariable Long deptId) {
+        List<Complaint> complaints = complaintService.getUnassignedComplaintsByDepartment(deptId);
+        return ResponseEntity.ok(complaints);
+    }
+
+    /**
+     * Get complaint stats for a department (for dashboard cards)
+     * GET /api/complaints/department/{deptId}/stats
+     */
+    @GetMapping("/department/{deptId}/stats")
+    public ResponseEntity<Map<String, Object>> getDepartmentStats(@PathVariable Long deptId) {
+        Map<String, Object> stats = complaintService.getDepartmentStats(deptId);
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * Get escalated complaints (for commissioner)
+     * GET /api/complaints/escalated
+     */
+    @GetMapping("/escalated")
+    public ResponseEntity<List<Complaint>> getEscalatedComplaints() {
+        List<Complaint> complaints = complaintService.getEscalatedComplaints();
+        return ResponseEntity.ok(complaints);
+    }
+
+    /**
+     * Get system-wide stats (for admin dashboard)
+     * GET /api/complaints/stats
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getSystemStats() {
+        Map<String, Object> stats = complaintService.getSystemStats();
+        return ResponseEntity.ok(stats);
+    }
+
     /**
      * Update complaint (basic fields only)
      * PUT /api/complaints/{complaintId}

@@ -30,13 +30,13 @@ import {
   BreadcrumbPage,
 } from "../components/ui";
 import { ThemeToggle } from "../components/theme-toggle";
+import { NotificationBell } from "../components/common";
 import {
   Building2,
   ChevronDown,
   LogOut,
   Settings,
   User,
-  Bell,
 } from "lucide-react";
 
 // Sidebar Content Component
@@ -155,7 +155,7 @@ const SidebarNav = ({ menuItems, activeItem, setActiveItem, user }) => {
 };
 
 // Header Component
-const DashboardHeader = ({ breadcrumbs, user, onLogout }) => {
+const DashboardHeader = ({ breadcrumbs, user, onLogout, onNavigateToComplaint }) => {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:px-6">
       <SidebarTrigger />
@@ -180,12 +180,7 @@ const DashboardHeader = ({ breadcrumbs, user, onLogout }) => {
       </Breadcrumb>
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground flex items-center justify-center">
-            3
-          </span>
-        </Button>
+        <NotificationBell onNavigateToComplaint={onNavigateToComplaint} />
         <ThemeToggle />
         <Separator orientation="vertical" className="h-6" />
         <Button variant="ghost" size="icon" onClick={onLogout}>
@@ -204,7 +199,8 @@ const DashboardLayout = ({
   breadcrumbs = [{ label: "Dashboard", href: "/" }],
   activeItem,
   setActiveItem,
-  onLogout
+  onLogout,
+  onNavigateToComplaint,
 }) => {
   return (
     <SidebarProvider>
@@ -223,6 +219,7 @@ const DashboardLayout = ({
             breadcrumbs={breadcrumbs} 
             user={user}
             onLogout={onLogout}
+            onNavigateToComplaint={onNavigateToComplaint}
           />
           
           <div className="flex-1 overflow-auto p-4 sm:p-6">

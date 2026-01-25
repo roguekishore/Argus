@@ -1,19 +1,47 @@
-import React, { useState } from "react";
+/**
+ * CitizenDashboard - Dashboard for Citizens
+ * 
+ * ARCHITECTURE NOTES:
+ * - Complaint-centric: Primary focus is "My Complaints"
+ * - No analytics/charts/system data - citizens just manage their complaints
+ * - Uses shared ComplaintList and DashboardSection components
+ * - Role-specific actions (close, cancel, rate) passed as props to shared components
+ * 
+ * DATA FLOW:
+ * - useComplaints() fetches citizen's complaints automatically
+ * - Stats derived from actual complaint data
+ * - Actions handled locally, delegated to hook methods
+ * 
+ * FUTURE EXTENSIBILITY:
+ * - Audit timeline: Add AuditTimeline component to complaint detail view
+ * - Notifications: Add NotificationPanel in sidebar or header
+ * - JWT: Auth already abstracted via useAuth hook - no changes needed here
+ */
+
+import React, { useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui";
+import { Button } from "../../components/ui";
+import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { useUser } from "../../context/UserContext";
+import { useComplaints } from "../../hooks/useComplaints";
+import { useAuth } from "../../hooks/useAuth";
+import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
   FileText,
   PlusCircle,
   Clock,
   CheckCircle2,
-  AlertCircle,
-  History,
   User,
   HelpCircle,
+  RefreshCw,
 } from "lucide-react";
 
-// Citizen Menu Items
+// =============================================================================
+// MENU CONFIGURATION
+// Citizens have simple navigation: Dashboard, Complaints, Profile
+// =============================================================================
 const citizenMenuItems = [
   {
     label: "Main",
@@ -24,14 +52,14 @@ const citizenMenuItems = [
         icon: <LayoutDashboard className="h-4 w-4" />,
       },
       {
-        id: "complaints",
+        id: "my-complaints",
         label: "My Complaints",
         icon: <FileText className="h-4 w-4" />,
         children: [
           {
-            id: "new-complaint",
-            label: "New Complaint",
-            icon: <PlusCircle className="h-4 w-4" />,
+            id: "all-complaints",
+            label: "All Complaints",
+            icon: <FileText className="h-4 w-4" />,
           },
           {
             id: "pending",
@@ -43,17 +71,12 @@ const citizenMenuItems = [
             label: "Resolved",
             icon: <CheckCircle2 className="h-4 w-4" />,
           },
-          {
-            id: "rejected",
-            label: "Rejected",
-            icon: <AlertCircle className="h-4 w-4" />,
-          },
         ],
       },
       {
-        id: "history",
-        label: "History",
-        icon: <History className="h-4 w-4" />,
+        id: "new-complaint",
+        label: "File New Complaint",
+        icon: <PlusCircle className="h-4 w-4" />,
       },
     ],
   },
@@ -74,131 +97,131 @@ const citizenMenuItems = [
   },
 ];
 
-// Sample Dashboard Content
-const DashboardContent = ({ activeItem }) => {
-  const stats = [
-    { title: "Total Complaints", value: "12", description: "All time submissions", icon: <FileText className="h-5 w-5" /> },
-    { title: "Pending", value: "3", description: "Awaiting response", icon: <Clock className="h-5 w-5 text-yellow-500" /> },
-    { title: "Resolved", value: "8", description: "Successfully closed", icon: <CheckCircle2 className="h-5 w-5 text-green-500" /> },
-    { title: "Rejected", value: "1", description: "Not accepted", icon: <AlertCircle className="h-5 w-5 text-red-500" /> },
-  ];
-
-  const contentMap = {
-    dashboard: (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Welcome back!</h2>
-          <p className="text-muted-foreground">Here's an overview of your grievance submissions.</p>
-        </div>
-        
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                {stat.icon}
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground">{stat.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Complaints</CardTitle>
-            <CardDescription>Your latest grievance submissions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <p className="font-medium">Complaint #{2024001 + i}</p>
-                    <p className="text-sm text-muted-foreground">Water supply issue in sector {i}</p>
-                  </div>
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    i === 1 ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :
-                    i === 2 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" :
-                    "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                  }`}>
-                    {i === 1 ? "Pending" : i === 2 ? "Resolved" : "In Progress"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    ),
-    "new-complaint": (
-      <Card>
-        <CardHeader>
-          <CardTitle>Submit New Complaint</CardTitle>
-          <CardDescription>Fill in the details to register your grievance</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Complaint form will be rendered here...</p>
-        </CardContent>
-      </Card>
-    ),
-    pending: (
-      <Card>
-        <CardHeader>
-          <CardTitle>Pending Complaints</CardTitle>
-          <CardDescription>Complaints awaiting response</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Pending complaints list...</p>
-        </CardContent>
-      </Card>
-    ),
-    resolved: (
-      <Card>
-        <CardHeader>
-          <CardTitle>Resolved Complaints</CardTitle>
-          <CardDescription>Successfully closed complaints</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Resolved complaints list...</p>
-        </CardContent>
-      </Card>
-    ),
-    profile: (
-      <Card>
-        <CardHeader>
-          <CardTitle>My Profile</CardTitle>
-          <CardDescription>Manage your account settings</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Profile settings...</p>
-        </CardContent>
-      </Card>
-    ),
-  };
-
-  return contentMap[activeItem] || contentMap.dashboard;
-};
-
-// Citizen Dashboard
+// =============================================================================
+// CITIZEN DASHBOARD COMPONENT
+// =============================================================================
 const CitizenDashboard = () => {
+  const navigate = useNavigate();
   const [activeItem, setActiveItem] = useState("dashboard");
   
-  const user = {
-    name: "John Doe",
-    email: "john@example.com",
-    role: "Citizen",
-  };
+  // Context and hooks
+  const { user, role } = useUser();
+  const { logout } = useAuth();
+  const { 
+    complaints, 
+    stats, 
+    isLoading, 
+    error,
+    closeComplaint, 
+    cancelComplaint,
+    rateComplaint,
+    refresh 
+  } = useComplaints();
 
-  const getBreadcrumbs = () => {
-    const breadcrumbs = [{ label: "Dashboard", href: "/" }];
+  // ==========================================================================
+  // DERIVED DATA
+  // Stats computed from actual complaint data - no fake numbers
+  // ==========================================================================
+  const displayStats = useMemo(() => [
+    { 
+      title: "Total Complaints", 
+      value: stats.total?.toString() || "0", 
+      description: "All submissions", 
+      icon: <FileText className="h-5 w-5" /> 
+    },
+    { 
+      title: "Pending", 
+      value: stats.pending?.toString() || "0", 
+      description: "Awaiting response", 
+      icon: <Clock className="h-5 w-5 text-yellow-500" /> 
+    },
+    { 
+      title: "Resolved", 
+      value: stats.resolved?.toString() || "0", 
+      description: "Ready to close", 
+      icon: <CheckCircle2 className="h-5 w-5 text-green-500" /> 
+    },
+    { 
+      title: "Closed", 
+      value: stats.closed?.toString() || "0", 
+      description: "Completed", 
+      icon: <CheckCircle2 className="h-5 w-5 text-gray-500" /> 
+    },
+  ], [stats]);
+
+  // Filter complaints based on active menu item
+  const filteredComplaints = useMemo(() => {
+    switch (activeItem) {
+      case 'pending':
+        return complaints.filter(c => 
+          [COMPLAINT_STATES.FILED, COMPLAINT_STATES.IN_PROGRESS].includes(c.state)
+        );
+      case 'resolved':
+        return complaints.filter(c => 
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+        );
+      case 'all-complaints':
+      default:
+        return complaints;
+    }
+  }, [complaints, activeItem]);
+
+  // ==========================================================================
+  // ACTION HANDLERS
+  // These are passed to ComplaintCard/ComplaintList via props
+  // ==========================================================================
+  
+  // Close a resolved complaint (citizen confirms resolution)
+  const handleCloseComplaint = useCallback(async (complaintId) => {
+    try {
+      await closeComplaint(complaintId);
+    } catch (err) {
+      console.error('Failed to close complaint:', err);
+    }
+  }, [closeComplaint]);
+
+  // Cancel a complaint (citizen decides not to proceed)
+  const handleCancelComplaint = useCallback(async (complaintId) => {
+    if (window.confirm('Are you sure you want to cancel this complaint?')) {
+      try {
+        await cancelComplaint(complaintId);
+      } catch (err) {
+        console.error('Failed to cancel complaint:', err);
+      }
+    }
+  }, [cancelComplaint]);
+
+  // Rate complaint resolution
+  const handleRateComplaint = useCallback(async (complaintId) => {
+    // TODO: Replace with proper rating modal
+    const rating = window.prompt('Rate this complaint resolution (1-5):');
+    if (rating && rating >= 1 && rating <= 5) {
+      try {
+        await rateComplaint(complaintId, parseInt(rating));
+      } catch (err) {
+        console.error('Failed to rate complaint:', err);
+      }
+    }
+  }, [rateComplaint]);
+
+  // View complaint details
+  const handleViewDetails = useCallback((complaint) => {
+    navigate(`/dashboard/citizen/complaints/${complaint.id}`);
+  }, [navigate]);
+
+  // Logout
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  // ==========================================================================
+  // BREADCRUMB GENERATION
+  // ==========================================================================
+  const getBreadcrumbs = useCallback(() => {
+    const breadcrumbs = [{ label: "Dashboard", href: "/dashboard/citizen" }];
     
     if (activeItem !== "dashboard") {
-      // Find the item label
       for (const group of citizenMenuItems) {
         for (const item of group.items) {
           if (item.id === activeItem) {
@@ -215,24 +238,199 @@ const CitizenDashboard = () => {
         }
       }
     }
-    
     return breadcrumbs;
+  }, [activeItem]);
+
+  // Layout user object
+  const layoutUser = {
+    name: user?.name || "Citizen",
+    email: user?.email || "",
+    role: ROLE_DISPLAY_NAMES[role] || "Citizen",
   };
 
-  const handleLogout = () => {
-    console.log("Logging out...");
+  // ==========================================================================
+  // RENDER CONTENT BASED ON ACTIVE ITEM
+  // Clean separation - each section is focused on a single purpose
+  // ==========================================================================
+  const renderContent = () => {
+    switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // NEW COMPLAINT FORM
+      // -----------------------------------------------------------------------
+      case 'new-complaint':
+        return (
+          <DashboardSection
+            title="File New Complaint"
+            description="Submit a new grievance for resolution"
+          >
+            {/* TODO: Integrate ComplaintForm component here */}
+            <p className="text-muted-foreground">Complaint form will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // COMPLAINT LISTS (All, Pending, Resolved)
+      // -----------------------------------------------------------------------
+      case 'all-complaints':
+      case 'pending':
+      case 'resolved':
+        const titles = {
+          'all-complaints': 'All My Complaints',
+          'pending': 'Pending Complaints',
+          'resolved': 'Resolved Complaints',
+        };
+        const descriptions = {
+          'all-complaints': 'Complete list of your submitted complaints',
+          'pending': 'Complaints awaiting response or in progress',
+          'resolved': 'Complaints that have been resolved - you can close them',
+        };
+        const emptyMessages = {
+          'all-complaints': 'You haven\'t filed any complaints yet.',
+          'pending': 'No pending complaints. Great!',
+          'resolved': 'No resolved complaints yet.',
+        };
+
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title={titles[activeItem]}
+              description={descriptions[activeItem]}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              }
+            />
+            
+            <ComplaintList
+              complaints={filteredComplaints}
+              isLoading={isLoading}
+              emptyMessage={emptyMessages[activeItem]}
+              onClose={handleCloseComplaint}
+              onCancel={handleCancelComplaint}
+              onRate={handleRateComplaint}
+              onViewDetails={handleViewDetails}
+            />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // PROFILE
+      // -----------------------------------------------------------------------
+      case 'profile':
+        return (
+          <DashboardSection
+            title="My Profile"
+            description="Manage your account settings"
+          >
+            {/* TODO: Integrate ProfileForm component here */}
+            <p className="text-muted-foreground">Profile settings will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // HELP
+      // -----------------------------------------------------------------------
+      case 'help':
+        return (
+          <DashboardSection
+            title="Help & Support"
+            description="Get help with using the grievance system"
+          >
+            <p className="text-muted-foreground">Help content will be rendered here.</p>
+          </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // DASHBOARD (DEFAULT) - Overview with quick stats and recent complaints
+      // -----------------------------------------------------------------------
+      default:
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="My Grievance Dashboard"
+              description="Track and manage your submitted complaints"
+              actions={
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refresh}
+                    disabled={isLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setActiveItem('new-complaint')}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    New Complaint
+                  </Button>
+                </div>
+              }
+            />
+
+            {/* Stats - derived from actual data */}
+            <StatsGrid stats={displayStats} />
+
+            {/* Recent Complaints - show last 5 */}
+            <DashboardSection
+              title="Recent Complaints"
+              description="Your latest grievance submissions"
+              action={
+                complaints.length > 5 && (
+                  <Button 
+                    variant="link" 
+                    size="sm"
+                    onClick={() => setActiveItem('all-complaints')}
+                  >
+                    View All
+                  </Button>
+                )
+              }
+            >
+              <ComplaintList
+                complaints={complaints.slice(0, 5)}
+                isLoading={isLoading}
+                emptyMessage="No complaints yet. File your first complaint!"
+                compact={true}
+                onClose={handleCloseComplaint}
+                onCancel={handleCancelComplaint}
+                onRate={handleRateComplaint}
+                onViewDetails={handleViewDetails}
+              />
+            </DashboardSection>
+          </div>
+        );
+    }
   };
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
     <DashboardLayout
       menuItems={citizenMenuItems}
-      user={user}
+      user={layoutUser}
       breadcrumbs={getBreadcrumbs()}
       activeItem={activeItem}
       setActiveItem={setActiveItem}
       onLogout={handleLogout}
     >
-      <DashboardContent activeItem={activeItem} />
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+          {error}
+        </div>
+      )}
+      {renderContent()}
     </DashboardLayout>
   );
 };
