@@ -91,6 +91,13 @@ public class SessionManager {
     }
     
     /**
+     * Remove session by session ID (works for web and whatsapp)
+     */
+    public void removeSession(String sessionId) {
+        sessions.remove(sessionId);
+    }
+    
+    /**
      * Reset session to idle state
      */
     public void resetSession(String phoneNumber) {
