@@ -95,4 +95,33 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     long countByStatus(ComplaintStatus status);
     
     long countByEscalationLevelGreaterThan(int level);
+    
+    // ==================== DUPLICATE DETECTION (Proximity Search) ====================
+    
+    /**
+     * Find nearby complaints within a radius (in meters) using Haversine formula.
+     * Used for duplicate detection based on location proximity.
+     * Returns complaints filed in last 30 days with coordinates.
+     */
+    @Query(value = """
+        SELECT * FROM complaints c 
+        WHERE c.latitude IS NOT NULL 
+        AND c.longitude IS NOT NULL
+        AND c.created_time > NOW() - INTERVAL 30 DAY
+        AND c.status NOT IN ('CLOSED', 'CANCELLED')
+        AND (
+            6371000 * acos(
+                cos(radians(:lat)) * cos(radians(c.latitude)) * 
+                cos(radians(c.longitude) - radians(:lng)) + 
+                sin(radians(:lat)) * sin(radians(c.latitude))
+            )
+        ) < :radiusMeters
+        ORDER BY c.created_time DESC
+        LIMIT 10
+        """, nativeQuery = true)
+    List<Complaint> findNearbyComplaints(
+        @Param("lat") Double lat, 
+        @Param("lng") Double lng, 
+        @Param("radiusMeters") Double radiusMeters
+    );
 }

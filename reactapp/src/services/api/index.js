@@ -18,3 +18,6 @@ export { default as notificationService, NOTIFICATION_TYPES } from './notificati
 export { default as resolutionProofService } from './resolutionProofService';
 export { default as disputeService } from './disputeService';
 export { default as signoffService } from './signoffService';
+
+// Community features (upvoting, nearby complaints)
+export { default as communityService } from './communityService';

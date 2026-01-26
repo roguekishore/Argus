@@ -36,6 +36,17 @@ public class Complaint {
     private String title;
     private String description;
     private String location;
+    
+    // ===== PRECISE LOCATION COORDINATES (from map pin) =====
+    @Column(name = "latitude")
+    private Double latitude;
+    
+    @Column(name = "longitude")
+    private Double longitude;
+    
+    // ===== COMMUNITY ENGAGEMENT (upvotes / "Me Too") =====
+    @Column(name = "upvote_count", columnDefinition = "INT DEFAULT 0")
+    private Integer upvoteCount = 0;
 
     // ===== CATEGORY & ROUTING (AI decides, SLA provides defaults) =====
     

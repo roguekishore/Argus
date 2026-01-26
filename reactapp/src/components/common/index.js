@@ -11,6 +11,13 @@ export { default as ComplaintDetailSection } from './ComplaintDetailSection';
 export { default as ComplaintDetailPage } from './ComplaintDetailPage';
 export { default as ComplaintForm } from './ComplaintForm';
 
+// Location & Duplicate Detection
+export { default as LocationPicker } from './LocationPicker';
+export { default as DuplicateWarning } from './DuplicateWarning';
+
+// Community features (upvoting, nearby complaints)
+export { default as NearbyComplaints } from './NearbyComplaints';
+
 // Resolution & Dispute forms
 export { default as ResolutionProofForm } from './ResolutionProofForm';
 export { default as DisputeForm } from './DisputeForm';

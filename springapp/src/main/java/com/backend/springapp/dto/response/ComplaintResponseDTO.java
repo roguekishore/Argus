@@ -24,6 +24,8 @@ public class ComplaintResponseDTO {
     private String title;
     private String description;
     private String location;
+    private Double latitude;
+    private Double longitude;
     private ComplaintStatus status;
     private LocalDateTime createdTime;
 
@@ -53,4 +55,8 @@ public class ComplaintResponseDTO {
     private String imageMimeType;   // MIME type of the image
     private String imageAnalysis;   // AI analysis of the image
     private LocalDateTime imageAnalyzedAt;
+    
+    // Community engagement (upvotes)
+    private Integer upvoteCount;        // Number of "Me Too" upvotes
+    private Boolean hasUserUpvoted;     // Whether current user has upvoted (for UI)
 }

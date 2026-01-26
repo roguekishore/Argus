@@ -2,10 +2,12 @@ package com.backend.springapp.controller;
 
 import com.backend.springapp.dto.request.UpdateFiledDateRequest;
 import com.backend.springapp.dto.response.ComplaintResponseDTO;
+import com.backend.springapp.dto.response.DuplicateCheckResponseDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.model.Complaint;
 import com.backend.springapp.service.ComplaintService;
+import com.backend.springapp.service.DuplicateDetectionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,6 +26,36 @@ public class ComplaintController {
 
     @Autowired
     private ComplaintService complaintService;
+    
+    @Autowired
+    private DuplicateDetectionService duplicateDetectionService;
+
+    // ==================== DUPLICATE DETECTION ====================
+    
+    /**
+     * Check for potential duplicate complaints based on location + description similarity.
+     * Call this BEFORE submitting a new complaint to warn the user.
+     * 
+     * POST /api/complaints/check-duplicates
+     * 
+     * @param description The complaint description
+     * @param latitude Location latitude (from map pin)
+     * @param longitude Location longitude (from map pin)
+     * @param radiusMeters Optional search radius (default 500m)
+     * @return List of potential duplicates with similarity scores
+     */
+    @PostMapping("/check-duplicates")
+    public ResponseEntity<DuplicateCheckResponseDTO> checkForDuplicates(
+            @RequestParam("description") String description,
+            @RequestParam("latitude") Double latitude,
+            @RequestParam("longitude") Double longitude,
+            @RequestParam(value = "radiusMeters", required = false) Double radiusMeters) {
+        
+        DuplicateCheckResponseDTO result = duplicateDetectionService.checkForDuplicates(
+            description, latitude, longitude, radiusMeters
+        );
+        return ResponseEntity.ok(result);
+    }
 
     // ==================== BASIC CRUD ====================
 
@@ -54,6 +86,8 @@ public class ComplaintController {
      * @param title Complaint title
      * @param description Detailed description
      * @param location Where the issue is located
+     * @param latitude REQUIRED latitude from map pin
+     * @param longitude REQUIRED longitude from map pin
      * @param image Optional evidence image (JPEG, PNG, max 10MB recommended)
      * @return ComplaintResponseDTO with AI analysis and image analysis results
      */
@@ -64,6 +98,8 @@ public class ComplaintController {
             @RequestParam("title") String title,
             @RequestParam("description") String description,
             @RequestParam("location") String location,
+            @RequestParam("latitude") Double latitude,
+            @RequestParam("longitude") Double longitude,
             @RequestParam(value = "image", required = false) MultipartFile image) {
         
         try {
@@ -72,6 +108,8 @@ public class ComplaintController {
             complaint.setTitle(title);
             complaint.setDescription(description);
             complaint.setLocation(location);
+            complaint.setLatitude(latitude);
+            complaint.setLongitude(longitude);
             
             // Extract image data if present
             byte[] imageBytes = null;
