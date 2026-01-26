@@ -381,6 +381,44 @@ public class NotificationService {
     }
     
     /**
+     * Notify department head about a new complaint assigned to their department.
+     * Sent when AI auto-assigns or admin manually routes a complaint.
+     */
+    public Notification notifyDepartmentAssignment(
+            Long deptHeadId,
+            Long complaintId,
+            String complaintTitle,
+            String departmentName) {
+        
+        String title = "New Complaint for " + departmentName;
+        String message = String.format(
+                "A new complaint '%s' has been assigned to your department. Please review and assign to staff.",
+                truncate(complaintTitle, 50));
+        String link = "/dept-head/complaints/" + complaintId;
+
+        return send(deptHeadId, NotificationType.DEPARTMENT_ASSIGNMENT, title, message, complaintId, link);
+    }
+    
+    /**
+     * Notify super admin about a complaint needing manual routing.
+     * Sent when AI confidence is below threshold and automatic routing was skipped.
+     */
+    public Notification notifyManualRoutingRequired(
+            Long superAdminId,
+            Long complaintId,
+            String complaintTitle,
+            double aiConfidence) {
+        
+        String title = "Manual Routing Required";
+        String message = String.format(
+                "Complaint '%s' needs manual routing. AI confidence: %.0f%%. Please review and assign to correct department.",
+                truncate(complaintTitle, 40), aiConfidence * 100);
+        String link = "/admin/routing/" + complaintId;
+
+        return send(superAdminId, NotificationType.MANUAL_ROUTING_REQUIRED, title, message, complaintId, link);
+    }
+    
+    /**
      * Send a generic notification with custom type and message.
      * 
      * Flexible method for notifications that don't fit the specific helpers.

@@ -17,17 +17,20 @@ import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.exception.ResourceNotFoundException;
 import com.backend.springapp.model.Category;
+import com.backend.springapp.model.CitizenSignoff;
 import com.backend.springapp.model.Complaint;
 import com.backend.springapp.model.Department;
 import com.backend.springapp.model.SLA;
 import com.backend.springapp.model.User;
 import com.backend.springapp.repository.CategoryRepository;
+import com.backend.springapp.repository.CitizenSignoffRepository;
 import com.backend.springapp.repository.ComplaintRepository;
 import com.backend.springapp.repository.DepartmentRepository;
 import com.backend.springapp.repository.SLARepository;
 import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.service.AIService.AIDecision;
 import com.backend.springapp.service.ImageAnalysisService.ImageAnalysisResult;
+import com.backend.springapp.gamification.service.CitizenPointsService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,6 +74,12 @@ public class ComplaintService {
     
     @Autowired
     private ImageAnalysisService imageAnalysisService;
+    
+    @Autowired
+    private CitizenSignoffRepository citizenSignoffRepository;
+    
+    @Autowired
+    private CitizenPointsService citizenPointsService;
 
     /**
      * Create a new complaint (filed by citizen)
@@ -113,6 +122,7 @@ public class ComplaintService {
 
         // Check AI confidence for automatic vs manual routing
         String departmentName;
+        Long assignedDeptId = null;
         if (aiDecision.confidence < AI_CONFIDENCE_THRESHOLD) {
             // Low confidence: leave department unassigned for manual routing by admin
             saved.setDepartmentId(null);
@@ -122,12 +132,14 @@ public class ComplaintService {
                      aiDecision.confidence, saved.getComplaintId());
         } else {
             // High confidence: auto-assign to AI-determined department
-            saved.setDepartmentId(slaConfig.getDepartment().getId());
+            assignedDeptId = slaConfig.getDepartment().getId();
+            saved.setDepartmentId(assignedDeptId);
             saved.setNeedsManualRouting(false);
             departmentName = slaConfig.getDepartment().getName();
         }
 
         Complaint finalComplaint = complaintRepository.save(saved);
+        String complaintTitle = finalComplaint.getTitle() != null ? finalComplaint.getTitle() : "Complaint #" + finalComplaint.getComplaintId();
 
         // AUDIT: Record complaint creation with FILED status
         auditService.recordComplaintStateChange(
@@ -150,15 +162,17 @@ public class ComplaintService {
             auditReason
         );
 
-        // NOTIFY: Confirm to citizen that complaint was filed
-        // String title = "Complaint #" + finalComplaint.getComplaintId();
-        // notificationService.notifyStatusChange(
-        //     citizenId,
-        //     finalComplaint.getComplaintId(),
-        //     title,
-        //     null,  // No previous status
-        //     ComplaintStatus.FILED.name()
-        // );
+        // NOTIFY: Department head or Super Admin based on routing
+        if (saved.getNeedsManualRouting()) {
+            // Low confidence - notify all super admins for manual routing
+            notifySuperAdminsForManualRouting(finalComplaint.getComplaintId(), complaintTitle, aiDecision.confidence);
+        } else if (assignedDeptId != null) {
+            // High confidence - notify department head
+            notifyDeptHeadOfAssignment(assignedDeptId, finalComplaint.getComplaintId(), complaintTitle, departmentName);
+        }
+        
+        // GAMIFICATION: Award points for filing a complaint
+        citizenPointsService.awardPointsForFilingComplaint(citizenId);
 
         // Build response with all details
         return buildResponseDTO(finalComplaint, category.getName(), departmentName);
@@ -239,6 +253,7 @@ public class ComplaintService {
 
         // Check AI confidence for automatic vs manual routing
         String departmentName;
+        Long assignedDeptId = null;
         if (aiDecision.confidence < AI_CONFIDENCE_THRESHOLD) {
             // Low confidence: leave department unassigned for manual routing by admin
             saved.setDepartmentId(null);
@@ -248,7 +263,8 @@ public class ComplaintService {
                      aiDecision.confidence, saved.getComplaintId());
         } else {
             // High confidence: auto-assign to AI-determined department
-            saved.setDepartmentId(slaConfig.getDepartment().getId());
+            assignedDeptId = slaConfig.getDepartment().getId();
+            saved.setDepartmentId(assignedDeptId);
             saved.setNeedsManualRouting(false);
             departmentName = slaConfig.getDepartment().getName();
         }
@@ -260,6 +276,7 @@ public class ComplaintService {
         }
 
         Complaint finalComplaint = complaintRepository.save(saved);
+        String complaintTitle = finalComplaint.getTitle() != null ? finalComplaint.getTitle() : "Complaint #" + finalComplaint.getComplaintId();
 
         // AUDIT: Record complaint creation
         auditService.recordComplaintStateChange(
@@ -280,6 +297,15 @@ public class ComplaintService {
             AuditActorContext.system(),
             auditReason
         );
+
+        // NOTIFY: Department head or Super Admin based on routing
+        if (saved.getNeedsManualRouting()) {
+            // Low confidence - notify all super admins for manual routing
+            notifySuperAdminsForManualRouting(finalComplaint.getComplaintId(), complaintTitle, aiDecision.confidence);
+        } else if (assignedDeptId != null) {
+            // High confidence - notify department head
+            notifyDeptHeadOfAssignment(assignedDeptId, finalComplaint.getComplaintId(), complaintTitle, departmentName);
+        }
 
         return buildResponseDTO(finalComplaint, category.getName(), departmentName);
     }
@@ -412,6 +438,39 @@ public class ComplaintService {
         if (complaint.getImageS3Key() != null && !complaint.getImageS3Key().isBlank()) {
             imageUrl = s3StorageService.getPresignedUrl(complaint.getImageS3Key());
         }
+        
+        // Fetch dispute/signoff information
+        Boolean hasDispute = false;
+        Boolean disputePending = false;
+        Boolean disputeApproved = null;
+        String disputeReason = null;
+        String disputeCounterProofUrl = null;
+        LocalDateTime disputeCreatedAt = null;
+        String disputeFeedback = null;
+        
+        // Get the most recent signoff for this complaint
+        List<CitizenSignoff> signoffs = citizenSignoffRepository.findByComplaintIdOrderBySignedOffAtDesc(complaint.getComplaintId());
+        if (!signoffs.isEmpty()) {
+            // Find the most recent dispute (isAccepted = false)
+            CitizenSignoff latestDispute = signoffs.stream()
+                .filter(s -> !s.getIsAccepted())
+                .findFirst()
+                .orElse(null);
+            
+            if (latestDispute != null) {
+                hasDispute = true;
+                disputeApproved = latestDispute.getDisputeApproved();
+                disputePending = (disputeApproved == null);
+                disputeReason = latestDispute.getDisputeReason();
+                disputeCreatedAt = latestDispute.getSignedOffAt();
+                disputeFeedback = latestDispute.getFeedback();
+                
+                // Generate presigned URL for counter-proof image
+                if (latestDispute.getDisputeImageS3Key() != null && !latestDispute.getDisputeImageS3Key().isBlank()) {
+                    disputeCounterProofUrl = s3StorageService.getPresignedUrl(latestDispute.getDisputeImageS3Key());
+                }
+            }
+        }
 
         return ComplaintResponseDTO.builder()
             .complaintId(complaint.getComplaintId())
@@ -438,6 +497,14 @@ public class ComplaintService {
             .imageAnalysis(complaint.getImageAnalysis())
             .imageAnalyzedAt(complaint.getImageAnalyzedAt())
             .upvoteCount(complaint.getUpvoteCount() != null ? complaint.getUpvoteCount() : 0)
+            // Dispute/Signoff info
+            .hasDispute(hasDispute)
+            .disputePending(disputePending)
+            .disputeApproved(disputeApproved)
+            .disputeReason(disputeReason)
+            .disputeCounterProofUrl(disputeCounterProofUrl)
+            .disputeCreatedAt(disputeCreatedAt)
+            .disputeFeedback(disputeFeedback)
             .build();
     }
 
@@ -1106,6 +1173,7 @@ public class ComplaintService {
         );
         
         Complaint saved = complaintRepository.save(complaint);
+        String complaintTitle = saved.getTitle() != null ? saved.getTitle() : "Complaint #" + saved.getComplaintId();
         
         // AUDIT: Record manual department assignment
         auditService.recordDepartmentAssignment(
@@ -1115,6 +1183,9 @@ public class ComplaintService {
             AuditActorContext.forUser(adminId),
             "Manual routing by admin. Reason: " + (reason != null ? reason : "Admin override")
         );
+        
+        // NOTIFY: Department head of new assignment
+        notifyDeptHeadOfAssignment(departmentId, complaintId, complaintTitle, department.getName());
         
         log.info("✅ Complaint #{} manually routed to {} by admin {}", 
                  complaintId, department.getName(), adminId);
@@ -1134,5 +1205,51 @@ public class ComplaintService {
     @Transactional(readOnly = true)
     public long countPendingManualRouting() {
         return complaintRepository.countByNeedsManualRoutingTrue();
+    }
+    
+    // ==================== NOTIFICATION HELPERS ====================
+    
+    /**
+     * Notify department head when a complaint is assigned to their department.
+     */
+    private void notifyDeptHeadOfAssignment(Long deptId, Long complaintId, String complaintTitle, String departmentName) {
+        try {
+            userRepository.findFirstByDeptIdAndUserType(deptId, com.backend.springapp.enums.UserType.DEPT_HEAD)
+                .ifPresent(deptHead -> {
+                    notificationService.notifyDepartmentAssignment(
+                        deptHead.getUserId(),
+                        complaintId,
+                        complaintTitle,
+                        departmentName
+                    );
+                    log.info("📧 Notified dept head {} for new complaint #{} in {}", 
+                             deptHead.getName(), complaintId, departmentName);
+                });
+        } catch (Exception e) {
+            log.warn("Failed to notify dept head for complaint #{}: {}", complaintId, e.getMessage());
+        }
+    }
+    
+    /**
+     * Notify all super admins when a complaint needs manual routing.
+     */
+    private void notifySuperAdminsForManualRouting(Long complaintId, String complaintTitle, double aiConfidence) {
+        try {
+            List<User> superAdmins = userRepository.findByUserType(com.backend.springapp.enums.UserType.SUPER_ADMIN);
+            for (User admin : superAdmins) {
+                notificationService.notifyManualRoutingRequired(
+                    admin.getUserId(),
+                    complaintId,
+                    complaintTitle,
+                    aiConfidence
+                );
+            }
+            if (!superAdmins.isEmpty()) {
+                log.info("📧 Notified {} super admin(s) for manual routing of complaint #{}", 
+                         superAdmins.size(), complaintId);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to notify super admins for complaint #{}: {}", complaintId, e.getMessage());
+        }
     }
 }

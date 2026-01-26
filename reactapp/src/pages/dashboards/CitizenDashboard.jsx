@@ -44,7 +44,9 @@ import {
   RefreshCw,
   AlertTriangle,
   Users,
+  Trophy,
 } from "lucide-react";
+import { PointsBadge, CitizenLeaderboard } from "../../components/gamification";
 
 // =============================================================================
 // MENU CONFIGURATION
@@ -90,6 +92,11 @@ const citizenMenuItems = [
         id: "community",
         label: "Community Issues",
         icon: <Users className="h-4 w-4" />,
+      },
+      {
+        id: "leaderboard",
+        label: "Citizen Leaderboard",
+        icon: <Trophy className="h-4 w-4" />,
       },
     ],
   },
@@ -457,6 +464,27 @@ const CitizenDashboard = () => {
         );
 
       // -----------------------------------------------------------------------
+      // CITIZEN LEADERBOARD
+      // -----------------------------------------------------------------------
+      case 'leaderboard':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Citizen Leaderboard"
+              description="Recognizing responsible citizens who actively contribute to improving our community"
+            />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                <PointsBadge citizenId={userId} />
+              </div>
+              <div className="lg:col-span-2">
+                <CitizenLeaderboard limit={20} />
+              </div>
+            </div>
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
       // PROFILE
       // -----------------------------------------------------------------------
       case 'profile':
@@ -514,8 +542,15 @@ const CitizenDashboard = () => {
               }
             />
 
-            {/* Stats - derived from actual data */}
-            <StatsGrid stats={displayStats} />
+            {/* Points Badge - Gamification */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-3">
+                <StatsGrid stats={displayStats} />
+              </div>
+              <div className="md:col-span-1">
+                <PointsBadge citizenId={userId} />
+              </div>
+            </div>
 
             {/* Recent Complaints - show last 5 */}
             <DashboardSection

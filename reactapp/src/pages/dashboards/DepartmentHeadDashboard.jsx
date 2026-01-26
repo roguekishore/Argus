@@ -45,7 +45,9 @@ import {
   ThumbsDown,
   Eye,
   Upload,
+  Trophy,
 } from "lucide-react";
+import { StaffLeaderboard } from "../../components/gamification";
 
 // =============================================================================
 // MENU CONFIGURATION
@@ -112,6 +114,11 @@ const deptHeadMenuItems = [
         label: "Team Management",
         icon: <Users className="h-4 w-4" />,
       },
+      {
+        id: "team-performance",
+        label: "Staff Leaderboard",
+        icon: <Trophy className="h-4 w-4" />,
+      },
     ],
   },
 ];
@@ -146,6 +153,7 @@ const DepartmentHeadDashboard = () => {
   const [pendingDisputes, setPendingDisputes] = useState([]);
   const [disputesLoading, setDisputesLoading] = useState(false);
   const [disputeActionLoading, setDisputeActionLoading] = useState({});
+  const [disputeImageModalUrl, setDisputeImageModalUrl] = useState(null); // For viewing counter-proof images
 
   // Staff assignment modal state
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
@@ -654,10 +662,19 @@ const DepartmentHeadDashboard = () => {
                           <p className="text-sm">{dispute.feedback}</p>
                         </div>
                       )}
-                      {dispute.disputeImageS3Key && (
+                      {(dispute.disputeCounterProofUrl || dispute.disputeImageS3Key) && (
                         <div>
-                          <p className="text-sm font-medium text-muted-foreground">Counter-Proof Image</p>
-                          <Badge variant="secondary">Image attached</Badge>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Counter-Proof Image</p>
+                          {dispute.disputeCounterProofUrl ? (
+                            <img
+                              src={dispute.disputeCounterProofUrl}
+                              alt="Dispute counter-proof"
+                              className="w-full max-w-md h-48 object-cover rounded-lg border cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => setDisputeImageModalUrl(dispute.disputeCounterProofUrl)}
+                            />
+                          ) : (
+                            <Badge variant="secondary">Image attached (URL not available)</Badge>
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -727,6 +744,20 @@ const DepartmentHeadDashboard = () => {
               )}
             </div>
           </DashboardSection>
+        );
+
+      // -----------------------------------------------------------------------
+      // TEAM PERFORMANCE LEADERBOARD
+      // -----------------------------------------------------------------------
+      case 'team-performance':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Staff Leaderboard"
+              description="Top performing staff across all departments"
+            />
+            <StaffLeaderboard limit={20} showTitle={false} showDepartment={true} />
+          </div>
         );
 
       // -----------------------------------------------------------------------
@@ -851,6 +882,27 @@ const DepartmentHeadDashboard = () => {
                 currentUserId={userId}
               />
             </DashboardSection>
+
+            {/* Staff Leaderboard - Prominent Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    Staff Leaderboard
+                  </h2>
+                  <p className="text-sm text-muted-foreground">Top performers in your department</p>
+                </div>
+                <Button 
+                  variant="link" 
+                  size="sm"
+                  onClick={() => setActiveItem('team-performance')}
+                >
+                  View Full Leaderboard
+                </Button>
+              </div>
+              <StaffLeaderboard limit={5} compact showTitle={false} />
+            </div>
           </div>
         );
     }
@@ -907,6 +959,28 @@ const DepartmentHeadDashboard = () => {
                 hasExistingProof={proofStatus[selectedComplaintForProof]}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Counter-Proof Image Modal */}
+      {disputeImageModalUrl && (
+        <div 
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setDisputeImageModalUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img 
+              src={disputeImageModalUrl}
+              alt="Dispute counter-proof"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+            />
+            <button
+              onClick={() => setDisputeImageModalUrl(null)}
+              className="absolute -top-3 -right-3 bg-background rounded-full p-2 shadow-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

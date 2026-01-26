@@ -57,5 +57,9 @@ public class User {
     private Department department;
 
     @Enumerated(EnumType.STRING)
-    private UserType userType;    
+    private UserType userType;
+    
+    // ===== GAMIFICATION =====
+    @Column(name = "citizen_points", columnDefinition = "INT DEFAULT 0")
+    private Integer citizenPoints = 0;
 }

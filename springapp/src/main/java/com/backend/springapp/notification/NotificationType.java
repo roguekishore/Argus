@@ -110,6 +110,20 @@ public enum NotificationType {
     COMPLAINT_REOPENED,
     
     /**
+     * New complaint assigned to department.
+     * Sent to: Department Head of the assigned department
+     * Triggers: AI auto-assignment or admin manual routing to department
+     */
+    DEPARTMENT_ASSIGNMENT,
+    
+    /**
+     * Complaint requires manual routing (low AI confidence).
+     * Sent to: Super Admin
+     * Triggers: AI confidence below threshold, complaint needs human review
+     */
+    MANUAL_ROUTING_REQUIRED,
+    
+    /**
      * Generic notification type.
      * Used for notifications that don't fit other categories.
      */

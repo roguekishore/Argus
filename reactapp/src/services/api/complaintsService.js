@@ -54,6 +54,24 @@ const complaintsService = {
   },
 
   /**
+   * Validate complaint text BEFORE submission to prevent vague complaints
+   * POST /api/complaints/validate-text
+   * @param {string} title - Complaint title/subject
+   * @param {string} description - Complaint description
+   * @param {string} location - Optional location string
+   * @returns {Promise<{isValid: boolean, message: string, suggestion: string|null, confidence: number, detectedCategory: string|null}>}
+   */
+  validateText: (title, description, location = '') => {
+    const params = new URLSearchParams();
+    params.append('title', title);
+    params.append('description', description);
+    if (location) {
+      params.append('location', location);
+    }
+    return apiClient.post(`/complaints/validate-text?${params.toString()}`);
+  },
+
+  /**
    * Check for potential duplicate complaints based on location + description
    * POST /api/complaints/check-duplicates
    * @param {string} description - Complaint description

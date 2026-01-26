@@ -37,14 +37,24 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
-  Settings,
   RefreshCw,
   Shield,
   Map,
   TrendingUp,
   Eye,
   Route,
+  Search,
+  X,
+  User,
+  Folder,
+  Timer,
+  Filter,
+  ArrowUpDown,
+  SlidersHorizontal,
+  Trophy,
 } from "lucide-react";
+import { CitizenLeaderboard, StaffLeaderboard } from "../../components/gamification";
+import { usersService, categoriesService, slaService } from "../../services";
 
 // =============================================================================
 // MENU CONFIGURATION
@@ -125,12 +135,12 @@ const adminMenuItems = [
     ],
   },
   {
-    label: "System",
+    label: "Gamification",
     items: [
       {
-        id: "settings",
-        label: "Settings",
-        icon: <Settings className="h-4 w-4" />,
+        id: "leaderboards",
+        label: "Leaderboards",
+        icon: <Trophy className="h-4 w-4" />,
       },
     ],
   },
@@ -191,6 +201,23 @@ const AdminDashboard = () => {
   const [routingReason, setRoutingReason] = useState("");
   const [routingError, setRoutingError] = useState(null);
 
+  // Global Search State
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState({
+    users: [],
+    complaints: [],
+    categories: [],
+    slaConfigs: [],
+    departments: [],
+  });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [allCategories, setAllCategories] = useState([]);
+  const [allSlaConfigs, setAllSlaConfigs] = useState([]);
+  const [searchFilter, setSearchFilter] = useState("all"); // all, users, complaints, categories, sla, departments
+  const [searchSort, setSearchSort] = useState("relevance"); // relevance, name, date, status
+
   // Fetch departments
   useEffect(() => {
     const fetchDepartments = async () => {
@@ -202,6 +229,25 @@ const AdminDashboard = () => {
       }
     };
     fetchDepartments();
+  }, []);
+
+  // Fetch all searchable data (users, categories, SLAs)
+  useEffect(() => {
+    const fetchSearchData = async () => {
+      try {
+        const [usersData, categoriesData, slaData] = await Promise.all([
+          usersService.getAll(),
+          categoriesService.getAll(),
+          slaService.getAll()
+        ]);
+        setAllUsers(Array.isArray(usersData) ? usersData : []);
+        setAllCategories(Array.isArray(categoriesData) ? categoriesData : []);
+        setAllSlaConfigs(Array.isArray(slaData) ? slaData : []);
+      } catch (err) {
+        console.error('Failed to fetch search data:', err);
+      }
+    };
+    fetchSearchData();
   }, []);
 
   // Fetch pending routing complaints
@@ -220,6 +266,24 @@ const AdminDashboard = () => {
     };
     fetchPendingRouting();
   }, []);
+
+  // Keyboard shortcuts for search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+K or Cmd+K to open search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+      // ESC to close search
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false);
+        setSearchQuery("");
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [searchOpen]);
 
   // ==========================================================================
   // DERIVED DATA
@@ -371,6 +435,134 @@ const AdminDashboard = () => {
       setRoutingLoading(false);
     }
   }, []);
+
+  // ==========================================================================
+  // GLOBAL SEARCH
+  // ==========================================================================
+  
+  // Sort helper functions
+  const sortByName = (a, b) => (a.name || a.title || '').localeCompare(b.name || b.title || '');
+  const sortByDate = (a, b) => new Date(b.createdTime || b.createdAt || 0) - new Date(a.createdTime || a.createdAt || 0);
+  const sortByStatus = (a, b) => (a.status || '').localeCompare(b.status || '');
+
+  const performSearch = useCallback((query, filter, sort) => {
+    if (!query || query.trim().length < 2) {
+      setSearchResults({ users: [], complaints: [], categories: [], slaConfigs: [], departments: [] });
+      return;
+    }
+
+    setSearchLoading(true);
+    const lowerQuery = query.toLowerCase().trim();
+    const maxResults = filter === 'all' ? 5 : 15;
+
+    // Search users
+    let matchedUsers = (filter === 'all' || filter === 'users') ? allUsers.filter(user => 
+      user.name?.toLowerCase().includes(lowerQuery) ||
+      user.email?.toLowerCase().includes(lowerQuery) ||
+      user.mobile?.toLowerCase().includes(lowerQuery) ||
+      user.userType?.toLowerCase().includes(lowerQuery)
+    ) : [];
+
+    // Search complaints
+    let matchedComplaints = (filter === 'all' || filter === 'complaints') ? complaints.filter(c =>
+      c.title?.toLowerCase().includes(lowerQuery) ||
+      c.description?.toLowerCase().includes(lowerQuery) ||
+      c.location?.toLowerCase().includes(lowerQuery) ||
+      c.complaintId?.toString().includes(lowerQuery) ||
+      c.categoryName?.toLowerCase().includes(lowerQuery) ||
+      c.status?.toLowerCase().includes(lowerQuery)
+    ) : [];
+
+    // Search categories
+    let matchedCategories = (filter === 'all' || filter === 'categories') ? allCategories.filter(cat =>
+      cat.name?.toLowerCase().includes(lowerQuery) ||
+      cat.description?.toLowerCase().includes(lowerQuery) ||
+      cat.keywords?.toLowerCase().includes(lowerQuery)
+    ) : [];
+
+    // Search SLA configs
+    let matchedSlaConfigs = (filter === 'all' || filter === 'sla') ? allSlaConfigs.filter(sla =>
+      sla.categoryName?.toLowerCase().includes(lowerQuery) ||
+      sla.departmentName?.toLowerCase().includes(lowerQuery) ||
+      sla.basePriority?.toLowerCase().includes(lowerQuery)
+    ) : [];
+
+    // Search departments
+    let matchedDepartments = (filter === 'all' || filter === 'departments') ? departments.filter(dept =>
+      dept.name?.toLowerCase().includes(lowerQuery) ||
+      dept.description?.toLowerCase().includes(lowerQuery)
+    ) : [];
+
+    // Apply sorting
+    if (sort === 'name') {
+      matchedUsers = matchedUsers.sort(sortByName);
+      matchedComplaints = matchedComplaints.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      matchedCategories = matchedCategories.sort(sortByName);
+      matchedSlaConfigs = matchedSlaConfigs.sort((a, b) => (a.categoryName || '').localeCompare(b.categoryName || ''));
+      matchedDepartments = matchedDepartments.sort(sortByName);
+    } else if (sort === 'date') {
+      matchedUsers = matchedUsers.sort(sortByDate);
+      matchedComplaints = matchedComplaints.sort(sortByDate);
+      matchedCategories = matchedCategories.sort(sortByDate);
+      matchedSlaConfigs = matchedSlaConfigs.sort(sortByDate);
+      matchedDepartments = matchedDepartments.sort(sortByDate);
+    } else if (sort === 'status') {
+      matchedComplaints = matchedComplaints.sort(sortByStatus);
+      matchedUsers = matchedUsers.sort((a, b) => (a.userType || '').localeCompare(b.userType || ''));
+    }
+
+    setSearchResults({
+      users: matchedUsers.slice(0, maxResults),
+      complaints: matchedComplaints.slice(0, maxResults),
+      categories: matchedCategories.slice(0, maxResults),
+      slaConfigs: matchedSlaConfigs.slice(0, maxResults),
+      departments: matchedDepartments.slice(0, maxResults),
+    });
+    setSearchLoading(false);
+  }, [allUsers, complaints, allCategories, allSlaConfigs, departments]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      performSearch(searchQuery, searchFilter, searchSort);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchFilter, searchSort, performSearch]);
+
+  const handleSearchSelect = useCallback((type, item) => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchFilter("all");
+    setSearchSort("relevance");
+    
+    switch (type) {
+      case 'complaint':
+        handleViewDetails(item);
+        break;
+      case 'user':
+        setActiveItem('users');
+        break;
+      case 'category':
+        setActiveItem('categories');
+        break;
+      case 'sla':
+        setActiveItem('sla-config');
+        break;
+      case 'department':
+        setActiveItem('departments');
+        break;
+      default:
+        break;
+    }
+  }, [handleViewDetails]);
+
+  const totalResults = useMemo(() => 
+    searchResults.users.length + 
+    searchResults.complaints.length + 
+    searchResults.categories.length + 
+    searchResults.slaConfigs.length + 
+    searchResults.departments.length
+  , [searchResults]);
 
   // ==========================================================================
   // BREADCRUMB GENERATION
@@ -707,15 +899,21 @@ const AdminDashboard = () => {
       case 'sla-config':
         return <SLAManagement />;
 
-      case 'settings':
+      // -----------------------------------------------------------------------
+      // LEADERBOARDS
+      // -----------------------------------------------------------------------
+      case 'leaderboards':
         return (
-          <DashboardSection
-            title="System Settings"
-            description="Configure system-wide settings"
-          >
-            {/* TODO: Integrate SystemSettings component */}
-            <p className="text-muted-foreground">System settings interface will be rendered here.</p>
-          </DashboardSection>
+          <div className="space-y-6">
+            <PageHeader
+              title="Gamification Leaderboards"
+              description="View citizen engagement and staff performance rankings"
+            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CitizenLeaderboard limit={10} />
+              <StaffLeaderboard limit={10} />
+            </div>
+          </div>
         );
 
       // -----------------------------------------------------------------------
@@ -730,17 +928,285 @@ const AdminDashboard = () => {
               title="Admin Dashboard"
               description="System oversight and management"
               actions={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refresh}
-                  disabled={isLoading}
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearchOpen(true)}
+                    className="gap-2"
+                  >
+                    <Search className="h-4 w-4" />
+                    Search
+                    <kbd className="hidden md:inline-flex px-1.5 py-0.5 bg-muted rounded text-xs font-mono">⌘K</kbd>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refresh}
+                    disabled={isLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
               }
             />
+
+            {/* Global Search Modal - Command Palette Style */}
+            {searchOpen && (
+              <div 
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] z-50"
+                onClick={(e) => { if (e.target === e.currentTarget) { setSearchOpen(false); setSearchQuery(""); setSearchFilter("all"); setSearchSort("relevance"); } }}
+              >
+                <div className="w-full max-w-2xl mx-4 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
+                  {/* Search Input */}
+                  <div className="flex items-center border-b border-border px-4">
+                    <Search className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Search users, complaints, categories, SLAs..."
+                      className="flex-1 h-14 px-4 bg-transparent text-base placeholder:text-muted-foreground focus:outline-none"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                    <button 
+                      onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchFilter("all"); setSearchSort("relevance"); }}
+                      className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                    >
+                      <X className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+
+                  {/* Filter Tabs & Sort */}
+                  <div className="flex items-center justify-between border-b border-border px-2 py-2 bg-muted/30">
+                    {/* Filter Tabs */}
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                      {[
+                        { id: 'all', label: 'All', icon: <SlidersHorizontal className="h-3 w-3" /> },
+                        { id: 'users', label: 'Users', icon: <User className="h-3 w-3" /> },
+                        { id: 'complaints', label: 'Complaints', icon: <FileText className="h-3 w-3" /> },
+                        { id: 'categories', label: 'Categories', icon: <Folder className="h-3 w-3" /> },
+                        { id: 'sla', label: 'SLA', icon: <Timer className="h-3 w-3" /> },
+                        { id: 'departments', label: 'Departments', icon: <Building className="h-3 w-3" /> },
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setSearchFilter(tab.id)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                            searchFilter === tab.id
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                          }`}
+                        >
+                          {tab.icon}
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Sort Dropdown */}
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      <select
+                        value={searchSort}
+                        onChange={(e) => setSearchSort(e.target.value)}
+                        className="text-xs bg-transparent border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                      >
+                        <option value="relevance">Relevance</option>
+                        <option value="name">Name A-Z</option>
+                        <option value="date">Newest First</option>
+                        <option value="status">Status</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Search Results */}
+                  <div className="max-h-[45vh] overflow-y-auto">
+                    {searchQuery.length < 2 ? (
+                      <div className="py-14 px-4 text-center">
+                        <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                          <Search className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-medium text-foreground">Search across your system</p>
+                        <p className="text-xs text-muted-foreground mt-1">Find users, complaints, categories, SLAs, and departments</p>
+                      </div>
+                    ) : searchLoading ? (
+                      <div className="py-14 text-center">
+                        <RefreshCw className="h-6 w-6 mx-auto animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground mt-3">Searching...</p>
+                      </div>
+                    ) : totalResults === 0 ? (
+                      <div className="py-14 px-4 text-center">
+                        <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                          <Search className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-medium text-foreground">No results found</p>
+                        <p className="text-xs text-muted-foreground mt-1">Try a different filter or search term</p>
+                      </div>
+                    ) : (
+                      <div className="py-2">
+                        {/* Users Results */}
+                        {searchResults.users.length > 0 && (
+                          <div className="px-2 mb-2">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                              <span>Users</span>
+                              <span className="text-[10px] font-normal">{searchResults.users.length} result{searchResults.users.length > 1 ? 's' : ''}</span>
+                            </div>
+                            {searchResults.users.map(user => (
+                              <div
+                                key={user.id}
+                                className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-lg cursor-pointer hover:bg-accent transition-colors group"
+                                onClick={() => handleSearchSelect('user', user)}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                  <User className="h-4 w-4 text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                                </div>
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground uppercase">
+                                  {user.userType}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Complaints Results */}
+                        {searchResults.complaints.length > 0 && (
+                          <div className="px-2 mb-2">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                              <span>Complaints</span>
+                              <span className="text-[10px] font-normal">{searchResults.complaints.length} result{searchResults.complaints.length > 1 ? 's' : ''}</span>
+                            </div>
+                            {searchResults.complaints.map(c => (
+                              <div
+                                key={c.complaintId}
+                                className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-lg cursor-pointer hover:bg-accent transition-colors group"
+                                onClick={() => handleSearchSelect('complaint', c)}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                                  <FileText className="h-4 w-4 text-orange-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">#{c.complaintId}: {c.title}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{c.description}</p>
+                                </div>
+                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full uppercase ${
+                                  c.status === 'RESOLVED' ? 'bg-green-500/10 text-green-600 dark:text-green-400' :
+                                  c.status === 'CLOSED' ? 'bg-gray-500/10 text-gray-600 dark:text-gray-400' :
+                                  c.status === 'FILED' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                                  'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                }`}>{c.status?.replace('_', ' ')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Categories Results */}
+                        {searchResults.categories.length > 0 && (
+                          <div className="px-2 mb-2">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                              <span>Categories</span>
+                              <span className="text-[10px] font-normal">{searchResults.categories.length} result{searchResults.categories.length > 1 ? 's' : ''}</span>
+                            </div>
+                            {searchResults.categories.map(cat => (
+                              <div
+                                key={cat.id}
+                                className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-lg cursor-pointer hover:bg-accent transition-colors group"
+                                onClick={() => handleSearchSelect('category', cat)}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                                  <Folder className="h-4 w-4 text-purple-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground">{cat.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{cat.description || 'No description'}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* SLA Results */}
+                        {searchResults.slaConfigs.length > 0 && (
+                          <div className="px-2 mb-2">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                              <span>SLA Configuration</span>
+                              <span className="text-[10px] font-normal">{searchResults.slaConfigs.length} result{searchResults.slaConfigs.length > 1 ? 's' : ''}</span>
+                            </div>
+                            {searchResults.slaConfigs.map(sla => (
+                              <div
+                                key={sla.id}
+                                className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-lg cursor-pointer hover:bg-accent transition-colors group"
+                                onClick={() => handleSearchSelect('sla', sla)}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-cyan-500/10 flex items-center justify-center shrink-0">
+                                  <Timer className="h-4 w-4 text-cyan-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground">{sla.categoryName || 'Unknown'}</p>
+                                  <p className="text-xs text-muted-foreground">{sla.departmentName} • {sla.slaDays} days</p>
+                                </div>
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground uppercase">
+                                  {sla.basePriority}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Departments Results */}
+                        {searchResults.departments.length > 0 && (
+                          <div className="px-2 mb-2">
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                              <span>Departments</span>
+                              <span className="text-[10px] font-normal">{searchResults.departments.length} result{searchResults.departments.length > 1 ? 's' : ''}</span>
+                            </div>
+                            {searchResults.departments.map(dept => (
+                              <div
+                                key={dept.id}
+                                className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-lg cursor-pointer hover:bg-accent transition-colors group"
+                                onClick={() => handleSearchSelect('department', dept)}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                  <Building className="h-4 w-4 text-emerald-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground">{dept.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{dept.description || 'Municipal department'}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-muted/30 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1">
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">↑</kbd>
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">↓</kbd>
+                        <span className="ml-1">Navigate</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">↵</kbd>
+                        <span className="ml-1">Select</span>
+                      </span>
+                    </div>
+                    <span className="flex items-center gap-1">
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">esc</kbd>
+                      <span className="ml-1">Close</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Stats Grid */}
             <StatsGrid stats={displayStats} />

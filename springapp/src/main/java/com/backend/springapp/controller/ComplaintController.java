@@ -2,10 +2,12 @@ package com.backend.springapp.controller;
 
 import com.backend.springapp.dto.request.UpdateFiledDateRequest;
 import com.backend.springapp.dto.response.ComplaintResponseDTO;
+import com.backend.springapp.dto.response.ComplaintValidationDTO;
 import com.backend.springapp.dto.response.DuplicateCheckResponseDTO;
 import com.backend.springapp.enums.ComplaintStatus;
 import com.backend.springapp.enums.Priority;
 import com.backend.springapp.model.Complaint;
+import com.backend.springapp.service.AIService;
 import com.backend.springapp.service.ComplaintService;
 import com.backend.springapp.service.DuplicateDetectionService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,46 @@ public class ComplaintController {
     
     @Autowired
     private DuplicateDetectionService duplicateDetectionService;
+    
+    @Autowired
+    private AIService aiService;
+
+    // ==================== PRE-SUBMISSION VALIDATION ====================
+    
+    /**
+     * Validate complaint text BEFORE submission to prevent vague/unclear complaints.
+     * Call this when user clicks "Submit" to check if complaint is clear enough.
+     * 
+     * POST /api/complaints/validate-text
+     * 
+     * This prevents vague complaints from entering the system by:
+     * - Checking if specific issue is mentioned
+     * - Ensuring actionable details are present
+     * - Providing suggestions to improve unclear complaints
+     * 
+     * @param title Complaint title/subject
+     * @param description Complaint description
+     * @param location Optional location string
+     * @return ComplaintValidationDTO with isValid, message, and suggestion
+     */
+    @PostMapping("/validate-text")
+    public ResponseEntity<ComplaintValidationDTO> validateComplaintText(
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam(value = "location", required = false) String location) {
+        
+        AIService.ValidationResult result = aiService.validateComplaintText(title, description, location);
+        
+        ComplaintValidationDTO response = ComplaintValidationDTO.builder()
+            .isValid(result.isValid)
+            .message(result.message)
+            .suggestion(result.suggestion)
+            .confidence(result.confidence)
+            .detectedCategory(result.detectedCategory)
+            .build();
+        
+        return ResponseEntity.ok(response);
+    }
 
     // ==================== DUPLICATE DETECTION ====================
     

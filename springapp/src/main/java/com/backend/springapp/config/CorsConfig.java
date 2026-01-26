@@ -1,5 +1,6 @@
 package com.backend.springapp.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -12,24 +13,32 @@ import java.util.List;
 /**
  * Global CORS configuration for the application.
  * 
- * This configuration allows the React frontend (localhost:3000) to communicate
- * with the Spring Boot backend (localhost:8080) during development.
+ * Dynamically configures allowed origins based on environment.
  * 
- * PRODUCTION NOTE:
- * Update allowedOrigins to your production domain(s) before deploying.
+ * PRODUCTION SETUP:
+ * Set CORS_ALLOWED_ORIGINS environment variable to your production domain(s).
+ * Example: https://yourdomain.com,https://www.yourdomain.com
+ * 
+ * For CNAME setup (e.g., api.yourdomain.com):
+ * - Backend runs at: https://api.yourdomain.com
+ * - Frontend runs at: https://yourdomain.com or https://www.yourdomain.com
+ * - Set CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
  */
 @Configuration
 public class CorsConfig {
+
+    @Value("${cors.allowed-origins}")
+    private String allowedOrigins;
 
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         
-        // Allow specific origins (React dev server)
-        config.setAllowedOrigins(Arrays.asList(
-            "http://localhost:3000",
-            "http://127.0.0.1:3000"
-        ));
+        // Parse comma-separated origins from environment
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        config.setAllowedOrigins(origins);
+        
+        System.out.println("✓ CORS enabled for origins: " + origins);
         
         // Allow all common HTTP methods
         config.setAllowedMethods(Arrays.asList(

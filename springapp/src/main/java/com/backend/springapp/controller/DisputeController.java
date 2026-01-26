@@ -1,6 +1,7 @@
 package com.backend.springapp.controller;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.backend.springapp.dto.request.DisputeRequest;
 import com.backend.springapp.dto.response.DisputeResponse;
+import com.backend.springapp.dto.response.PendingDisputeDTO;
 import com.backend.springapp.enums.UserType;
 import com.backend.springapp.exception.ResourceNotFoundException;
 import com.backend.springapp.model.CitizenSignoff;
@@ -226,10 +228,10 @@ public class DisputeController {
      * 
      * AUTHORIZATION: DEPT_HEAD only
      * 
-     * @return List of pending dispute signoffs
+     * @return List of pending dispute DTOs with presigned URLs for counter-proof images
      */
     @GetMapping("/disputes/pending")
-    public ResponseEntity<List<CitizenSignoff>> getPendingDisputes(
+    public ResponseEntity<List<PendingDisputeDTO>> getPendingDisputes(
             @RequestHeader(value = "X-User-Id", required = true) Long userId,
             @RequestHeader(value = "X-User-Role", required = false) String userRole,
             @RequestHeader(value = "X-User-Type", required = false) UserType userType,
@@ -244,10 +246,21 @@ public class DisputeController {
             userContext
         );
         
-        log.info("Found {} pending disputes for department {}", 
-            disputes.size(), userContext.departmentId());
+        // Convert to DTOs with presigned URLs for counter-proof images
+        List<PendingDisputeDTO> disputeDTOs = disputes.stream()
+            .map(signoff -> {
+                String counterProofUrl = null;
+                if (signoff.getDisputeImageS3Key() != null && !signoff.getDisputeImageS3Key().isEmpty()) {
+                    counterProofUrl = s3StorageService.getPresignedUrl(signoff.getDisputeImageS3Key());
+                }
+                return PendingDisputeDTO.fromEntity(signoff, counterProofUrl);
+            })
+            .collect(Collectors.toList());
         
-        return ResponseEntity.ok(disputes);
+        log.info("Found {} pending disputes for department {}", 
+            disputeDTOs.size(), userContext.departmentId());
+        
+        return ResponseEntity.ok(disputeDTOs);
     }
     
     // ==================== HELPER METHODS ====================

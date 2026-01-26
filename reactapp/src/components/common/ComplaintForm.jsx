@@ -80,6 +80,10 @@ const ComplaintForm = ({
   const [isDragging, setIsDragging] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null); // 'success' | 'error' | null
   
+  // AI Validation state (pre-submission check)
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState(null);
+  
   // Duplicate detection state
   const [duplicateData, setDuplicateData] = useState(null);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
@@ -135,6 +139,38 @@ const ComplaintForm = ({
   // ===========================================================================
   // VALIDATION
   // ===========================================================================
+  
+  // Check if text looks like gibberish (no real words)
+  const isGibberish = (text) => {
+    if (!text || text.length < 10) return false;
+    
+    // Common civic keywords that indicate a real complaint
+    const civicKeywords = [
+      'garbage', 'pothole', 'water', 'road', 'street', 'light', 'drain', 
+      'sewage', 'electricity', 'broken', 'leak', 'flood', 'blocked',
+      'not working', 'damaged', 'problem', 'issue', 'complaint', 'help',
+      'fix', 'repair', 'clean', 'collect', 'maintenance', 'days', 'weeks'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    
+    // If any civic keyword is found, it's not gibberish
+    if (civicKeywords.some(keyword => lowerText.includes(keyword))) {
+      return false;
+    }
+    
+    // Check for repeating patterns (like "jjjjjj" or "asdfasdf")
+    if (/(.)\1{4,}/.test(text)) return true; // Same char 5+ times
+    if (/(.{2,4})\1{2,}/.test(text)) return true; // Pattern repeating 3+ times
+    
+    // Check consonant-to-vowel ratio (gibberish has too many consonants)
+    const vowels = (text.match(/[aeiouAEIOU]/g) || []).length;
+    const consonants = (text.match(/[bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ]/g) || []).length;
+    if (consonants > 0 && vowels / consonants < 0.15) return true; // Less than 15% vowels
+    
+    return false;
+  };
+  
   const validateForm = useCallback(() => {
     const newErrors = {};
 
@@ -143,6 +179,8 @@ const ComplaintForm = ({
       newErrors.subject = 'Subject is required';
     } else if (formData.subject.trim().length < 5) {
       newErrors.subject = 'Subject must be at least 5 characters';
+    } else if (isGibberish(formData.subject.trim())) {
+      newErrors.subject = 'Please enter a valid subject describing your issue';
     }
 
     // Description validation
@@ -152,6 +190,8 @@ const ComplaintForm = ({
       newErrors.description = `Description must be at least ${MIN_DESCRIPTION_LENGTH} characters`;
     } else if (formData.description.trim().length > MAX_DESCRIPTION_LENGTH) {
       newErrors.description = `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters`;
+    } else if (isGibberish(formData.description.trim())) {
+      newErrors.description = 'Please describe your issue clearly. Random text is not accepted.';
     }
 
     // Location validation (required)
@@ -262,7 +302,47 @@ const ComplaintForm = ({
     }
 
     setSubmitStatus(null);
+    setValidationResult(null);
+    setErrors(prev => ({ ...prev, validation: null }));
 
+    // Step 1: AI validates complaint text BEFORE submission
+    setIsValidating(true);
+    try {
+      console.log('Calling validation API...');
+      const validation = await complaintsService.validateText(
+        formData.subject.trim(),
+        formData.description.trim(),
+        formData.location.trim() || ''
+      );
+      console.log('Validation response:', validation);
+      
+      // Check if validation explicitly says invalid (valid === false)
+      // Note: Java Boolean 'isValid' serializes as 'valid' in JSON
+      if (validation && validation.valid === false) {
+        setValidationResult(validation);
+        setIsValidating(false);
+        setErrors(prev => ({
+          ...prev,
+          validation: validation.message || 'This is not a valid municipal complaint.'
+        }));
+        return;
+      }
+      // If valid is true, proceed with submission
+      console.log('Validation passed, submitting...');
+    } catch (validationError) {
+      console.error('Validation API error:', validationError);
+      // Block submission if validation fails - don't let invalid complaints through
+      setIsValidating(false);
+      setErrors(prev => ({
+        ...prev,
+        validation: 'Unable to validate complaint. Please try again.'
+      }));
+      return;
+    } finally {
+      setIsValidating(false);
+    }
+
+    // Step 2: Submit the complaint (validation passed)
     try {
       await onSubmit({
         subject: formData.subject.trim(),
@@ -279,6 +359,7 @@ const ComplaintForm = ({
       setCoordinates(null);
       setShowMap(false);
       setDuplicateData(null);
+      setValidationResult(null);
       handleRemoveImage();
     } catch (error) {
       console.error('Failed to submit complaint:', error);
@@ -325,6 +406,40 @@ const ComplaintForm = ({
             <div className="flex items-center gap-2 p-3 rounded-md bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
               <CheckCircle2 className="h-5 w-5" />
               <span>Complaint submitted successfully! You can file another complaint or view your complaints.</span>
+            </div>
+          )}
+
+          {/* AI Validation Error - Vague Complaint */}
+          {errors.validation && errors.validation !== 'OK' && (
+            <div className="p-4 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="font-medium text-amber-800 dark:text-amber-200">
+                    Please be more specific
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    {errors.validation}
+                  </p>
+                  {validationResult?.suggestion && (
+                    <div className="mt-2 p-2 rounded bg-amber-100 dark:bg-amber-900/40">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        💡 <strong>Tip:</strong> {validationResult.suggestion}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-amber-600 dark:text-amber-400 underline mt-1"
+                    onClick={() => {
+                      setErrors(prev => ({ ...prev, validation: null }));
+                      setValidationResult(null);
+                    }}
+                  >
+                    Dismiss and edit complaint
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -538,17 +653,22 @@ const ComplaintForm = ({
               type="button" 
               variant="outline" 
               onClick={onCancel}
-              disabled={isLoading}
+              disabled={isLoading || isValidating}
             >
               Cancel
             </Button>
           )}
           <Button 
             type="submit" 
-            disabled={isLoading || !formData.subject.trim() || !isDescriptionValid}
+            disabled={isLoading || isValidating || !formData.subject.trim() || !isDescriptionValid}
             className={cn(!onCancel && "ml-auto")}
           >
-            {isLoading ? (
+            {isValidating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Checking...
+              </>
+            ) : isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Submitting...

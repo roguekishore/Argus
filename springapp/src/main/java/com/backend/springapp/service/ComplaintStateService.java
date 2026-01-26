@@ -11,6 +11,7 @@ import com.backend.springapp.repository.ComplaintRepository;
 import com.backend.springapp.security.UserContext;
 import com.backend.springapp.statemachine.ComplaintStateMachine;
 import com.backend.springapp.statemachine.StateTransitionResult;
+import com.backend.springapp.gamification.service.CitizenPointsService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,16 +46,19 @@ public class ComplaintStateService {
     private final StateTransitionService stateTransitionService;
     private final AuditService auditService;
     private final NotificationService notificationService;
+    private final CitizenPointsService citizenPointsService;
     
     public ComplaintStateService(
             ComplaintRepository complaintRepository,
             StateTransitionService stateTransitionService,
             AuditService auditService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            CitizenPointsService citizenPointsService) {
         this.complaintRepository = complaintRepository;
         this.stateTransitionService = stateTransitionService;
         this.auditService = auditService;
         this.notificationService = notificationService;
+        this.citizenPointsService = citizenPointsService;
     }
     
     /**
@@ -116,6 +120,11 @@ public class ComplaintStateService {
         
         // NOTIFICATION: Send user notifications AFTER audit (best-effort)
         sendStateChangeNotifications(saved, currentState, targetState);
+        
+        // GAMIFICATION: Award points when complaint is closed
+        if (targetState == ComplaintStatus.CLOSED) {
+            citizenPointsService.awardPointsForResolution(saved.getCitizenId());
+        }
         
         log.info("State transition completed: complaint={}, {} -> {}",
             complaintId, currentState, targetState);
