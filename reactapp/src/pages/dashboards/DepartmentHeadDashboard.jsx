@@ -228,17 +228,18 @@ const DepartmentHeadDashboard = () => {
   ], [stats, unassignedComplaints, pendingDisputes]);
 
   // Filter complaints based on active menu item
+  // Note: Backend returns 'status' property, not 'state'
   const filteredComplaints = useMemo(() => {
     switch (activeItem) {
       case 'unassigned':
         return unassignedComplaints;
       case 'in-progress':
-        return complaints.filter(c => c.state === COMPLAINT_STATES.IN_PROGRESS);
+        return complaints.filter(c => c.status === COMPLAINT_STATES.IN_PROGRESS);
       case 'overdue':
         return complaints.filter(c => {
           const deadline = new Date(c.slaDeadline || c.slaPromiseDate);
           return deadline < new Date() && 
-                 ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(c.state);
+                 ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(c.status);
         });
       case 'escalations':
         return complaints.filter(c => c.escalationLevel > 0);

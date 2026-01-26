@@ -1,7 +1,10 @@
 Category Controller:
-POST - /api/categories/
+POST - /api/categories (create category)
+GET - /api/categories (get all categories)
 GET - /api/categories/{id}
 GET - /api/categories/name/{name}
+PUT - /api/categories/{id} (update category)
+DELETE - /api/categories/{id} (delete category)
 
 Chat Controller:
 POST - /api/chat/message
@@ -47,17 +50,25 @@ Department Controller:
     GET - /api/departments/{id}
 
 SLA Controller:
-    POST - /api/sla?categoryId=1&departmentId=1
-    GET - /api/sla/{id}
-    GET - /api/sla/category/{categoryId}
-    GET - /api/sla/category/name/{categoryName}
-    PUT - /api/sla/{id}/department/{departmentId} - (update SLA department)
+GET - /api/sla (get all SLA configs)
+POST - /api/sla?categoryId=1&departmentId=1 (create SLA)
+GET - /api/sla/{id}
+GET - /api/sla/category/{categoryId}
+GET - /api/sla/category/name/{categoryName}
+PUT - /api/sla/{id} (update SLA - slaDays, basePriority)
+PUT - /api/sla/{id}/department/{departmentId} (update SLA department)
+DELETE - /api/sla/{id} (delete SLA)
 
 User Controller:
-    POST - /api/users/staff?deptId=1 (create staff user by admin)
-    PUT - /api/users/{userId}/assign-head?deptId=1 (assign staff as head of department)
-    GET - /api/users/department/{deptId}/staff (get all staff of a department)
-    GET - /api/users/department/{deptId}/head (get head of a department)
+GET - /api/users (get all users)
+POST - /api/users (create user)
+GET - /api/users/{id} (get user by ID)
+PUT - /api/users/{id} (update user)
+DELETE - /api/users/{id} (delete user)
+POST - /api/users/staff?deptId=1 (create staff user by admin)
+PUT - /api/users/{userId}/assign-head?deptId=1 (assign staff as head of department)
+GET - /api/users/department/{deptId}/staff (get all staff of a department)
+GET - /api/users/department/{deptId}/head (get head of a department)
 
 Escalation Controller:
     GET - /api/complaints/{id}/escalations (get escalation history for a complaint)

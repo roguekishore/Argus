@@ -44,16 +44,17 @@ export const useNotifications = (options = {}) => {
 
   /**
    * Calculate unread count from notifications
+   * Note: Backend returns 'isRead' property
    */
   const unreadCount = useMemo(() => {
-    return notifications.filter((n) => !n.read).length;
+    return notifications.filter((n) => !n.isRead).length;
   }, [notifications]);
 
   /**
    * Get only unread notifications
    */
   const unreadNotifications = useMemo(() => {
-    return notifications.filter((n) => !n.read);
+    return notifications.filter((n) => !n.isRead);
   }, [notifications]);
 
   /**
@@ -96,7 +97,7 @@ export const useNotifications = (options = {}) => {
     // Optimistic update
     setNotifications((prev) =>
       prev.map((n) =>
-        n.id === notificationId ? { ...n, read: true } : n
+        n.id === notificationId ? { ...n, isRead: true } : n
       )
     );
 
@@ -109,7 +110,7 @@ export const useNotifications = (options = {}) => {
       // Revert optimistic update on failure
       setNotifications((prev) =>
         prev.map((n) =>
-          n.id === notificationId ? { ...n, read: false } : n
+          n.id === notificationId ? { ...n, isRead: false } : n
         )
       );
       return false;
@@ -118,22 +119,22 @@ export const useNotifications = (options = {}) => {
 
   /**
    * Mark all unread notifications as read
+   * Uses the dedicated bulk endpoint for efficiency
    * @returns {Promise<void>}
    */
   const markAllAsRead = useCallback(async () => {
-    const unreadIds = notifications
-      .filter((n) => !n.read)
-      .map((n) => n.id);
+    const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-    if (unreadIds.length === 0) return;
+    if (unreadCount === 0) return;
 
     // Optimistic update
     setNotifications((prev) =>
-      prev.map((n) => ({ ...n, read: true }))
+      prev.map((n) => ({ ...n, isRead: true }))
     );
 
     try {
-      await notificationService.markMultipleAsRead(unreadIds);
+      // Use the dedicated bulk endpoint to mark all as read in DB
+      await notificationService.markAllAsRead();
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
       // Refresh to get actual state from backend

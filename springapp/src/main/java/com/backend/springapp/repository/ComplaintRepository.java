@@ -38,7 +38,20 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     List<Complaint> findByDepartmentIdAndStatusOrderByCreatedTimeDesc(Long departmentId, ComplaintStatus status);
     
     // Find unassigned complaints in a department (for dept head to assign)
+    // Note: This returns all unassigned, use the query below to exclude cancelled/closed
     List<Complaint> findByDepartmentIdAndStaffIsNullOrderByCreatedTimeDesc(Long departmentId);
+    
+    // Find unassigned complaints excluding cancelled and closed statuses
+    @Query("SELECT c FROM Complaint c WHERE c.department.id = :departmentId AND c.staff IS NULL " +
+           "AND c.status NOT IN (com.backend.springapp.enums.ComplaintStatus.CANCELLED, " +
+           "com.backend.springapp.enums.ComplaintStatus.CLOSED) ORDER BY c.createdTime DESC")
+    List<Complaint> findUnassignedActiveByDepartment(@Param("departmentId") Long departmentId);
+    
+    // Count unassigned active complaints (excluding cancelled/closed)
+    @Query("SELECT COUNT(c) FROM Complaint c WHERE c.department.id = :departmentId AND c.staff IS NULL " +
+           "AND c.status NOT IN (com.backend.springapp.enums.ComplaintStatus.CANCELLED, " +
+           "com.backend.springapp.enums.ComplaintStatus.CLOSED)")
+    long countUnassignedActiveByDepartment(@Param("departmentId") Long departmentId);
     
     // ==================== ADMIN/SYSTEM QUERIES ====================
     

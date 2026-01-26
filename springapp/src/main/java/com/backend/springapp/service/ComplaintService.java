@@ -990,11 +990,11 @@ public class ComplaintService {
     }
 
     /**
-     * Get unassigned complaints for a department
+     * Get unassigned complaints for a department (excluding cancelled/closed)
      */
     @Transactional(readOnly = true)
     public List<Complaint> getUnassignedComplaintsByDepartment(Long deptId) {
-        return complaintRepository.findByDepartmentIdAndStaffIsNullOrderByCreatedTimeDesc(deptId);
+        return complaintRepository.findUnassignedActiveByDepartment(deptId);
     }
 
     /**
@@ -1010,8 +1010,8 @@ public class ComplaintService {
         stats.put("resolved", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.RESOLVED));
         stats.put("closed", complaintRepository.countByDepartmentIdAndStatus(deptId, ComplaintStatus.CLOSED));
         
-        // Count unassigned (need a new query or filter in memory)
-        long unassigned = complaintRepository.findByDepartmentIdAndStaffIsNullOrderByCreatedTimeDesc(deptId).size();
+        // Count unassigned (excluding cancelled/closed complaints)
+        long unassigned = complaintRepository.countUnassignedActiveByDepartment(deptId);
         stats.put("unassigned", unassigned);
         
         return stats;

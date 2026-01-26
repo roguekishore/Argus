@@ -26,6 +26,34 @@ const usersService = {
   },
 
   /**
+   * Create a new user
+   * POST /api/users
+   * @param {Object} userData - User data { name, email, password, mobile, userType, deptId }
+   */
+  create: (userData) => {
+    return apiClient.post('/users', userData);
+  },
+
+  /**
+   * Update a user
+   * PUT /api/users/{id}
+   * @param {string|number} userId
+   * @param {Object} userData - Updated user data
+   */
+  update: (userId, userData) => {
+    return apiClient.put(`/users/${userId}`, userData);
+  },
+
+  /**
+   * Delete a user
+   * DELETE /api/users/{id}
+   * @param {string|number} userId
+   */
+  delete: (userId) => {
+    return apiClient.delete(`/users/${userId}`);
+  },
+
+  /**
    * Create a staff user
    * POST /api/users/staff?deptId={deptId}
    * @param {Object} userData - Staff user data

@@ -156,6 +156,9 @@ export const UserProvider = ({ children }) => {
     userId: user.userId,
     role: user.role,
     departmentId: user.departmentId,
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
     isAuthenticated: user.isAuthenticated,
   }), [
     user,

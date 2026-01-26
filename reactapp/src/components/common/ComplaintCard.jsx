@@ -45,7 +45,7 @@ import { cn } from '../../lib/utils';
  * Default field sets - can be overridden via props
  */
 const DEFAULT_VISIBLE_FIELDS = [
-  'id', 'title', 'description', 'state', 'createdAt', 'slaPromiseDate'
+  'id', 'title', 'description', 'status', 'createdTime', 'slaPromiseDate'
 ];
 
 const EXTENDED_FIELDS = [
@@ -93,7 +93,8 @@ const ComplaintCard = ({
   }, [visibleFields, showAllFields]);
 
   // Get display configurations
-  const stateConfig = STATE_CONFIG[complaint.state] || {};
+  // Note: Backend returns 'status' property, not 'state'
+  const stateConfig = STATE_CONFIG[complaint.status] || {};
   const priorityConfig = complaint.priority ? PRIORITY_CONFIG[complaint.priority] : null;
 
   // Check if a field should be visible
@@ -116,7 +117,7 @@ const ComplaintCard = ({
     const deadline = new Date(slaDate);
     const now = new Date();
     const isOverdue = deadline < now && 
-      ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED, COMPLAINT_STATES.RESOLVED].includes(complaint.state);
+      ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED, COMPLAINT_STATES.RESOLVED].includes(complaint.status);
     return { isOverdue, date: deadline };
   };
 
@@ -141,7 +142,7 @@ const ComplaintCard = ({
     }
 
     // Close - citizen can close resolved complaints
-    if (onClose && complaint.state === COMPLAINT_STATES.RESOLVED) {
+    if (onClose && complaint.status === COMPLAINT_STATES.RESOLVED) {
       available.push({
         key: 'close',
         label: 'Close',
@@ -152,7 +153,7 @@ const ComplaintCard = ({
     }
 
     // Rate - for resolved/closed complaints
-    if (onRate && [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(complaint.state) && !complaint.rating) {
+    if (onRate && [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(complaint.status) && !complaint.rating) {
       available.push({
         key: 'rate',
         label: 'Rate Service',
@@ -163,7 +164,7 @@ const ComplaintCard = ({
     }
 
     // Resolve - staff/dept head can resolve in-progress complaints
-    if (onResolve && complaint.state === COMPLAINT_STATES.IN_PROGRESS) {
+    if (onResolve && complaint.status === COMPLAINT_STATES.IN_PROGRESS) {
       available.push({
         key: 'resolve',
         label: 'Resolve',
@@ -174,7 +175,7 @@ const ComplaintCard = ({
     }
 
     // Reassign/Assign - dept head can assign/reassign
-    if (onReassign && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.state)) {
+    if (onReassign && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.status)) {
       // Show "Assign" if no staff assigned, "Reassign" if already assigned
       const isUnassigned = !complaint.staffId && !complaint.assignedStaff;
       available.push({
@@ -187,7 +188,7 @@ const ComplaintCard = ({
     }
 
     // Escalate - admin can escalate
-    if (onEscalate && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED, COMPLAINT_STATES.RESOLVED].includes(complaint.state)) {
+    if (onEscalate && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED, COMPLAINT_STATES.RESOLVED].includes(complaint.status)) {
       available.push({
         key: 'escalate',
         label: 'Escalate',
@@ -199,7 +200,7 @@ const ComplaintCard = ({
     }
 
     // Cancel - citizen/admin can cancel
-    if (onCancel && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.state)) {
+    if (onCancel && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.status)) {
       available.push({
         key: 'cancel',
         label: 'Cancel',
@@ -226,11 +227,6 @@ const ComplaintCard = ({
               <CardTitle className={cn('font-semibold', compact ? 'text-sm' : 'text-base')}>
                 #{complaint.id || complaint.complaintId}
               </CardTitle>
-              
-              {/* State Badge */}
-              <Badge className={cn(stateConfig.color, stateConfig.darkColor)}>
-                {stateConfig.label || complaint.state}
-              </Badge>
 
               {/* Priority Badge */}
               {showField('priority') && priorityConfig && (
@@ -267,20 +263,36 @@ const ComplaintCard = ({
                 {complaint.description}
               </p>
             )}
+
+            {/* Compact mode - show filed date inline */}
+            {compact && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                <Calendar className="h-3 w-3" />
+                <span>Filed: {formatDate(complaint.createdTime || complaint.createdAt)}</span>
+              </div>
+            )}
           </div>
 
-          {/* SLA Indicator */}
-          {showField('slaPromiseDate') && slaStatus && (
-            <div className={cn(
-              'flex items-center gap-1 text-xs px-2 py-1 rounded-full shrink-0',
-              slaStatus.isOverdue 
-                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
-                : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-            )}>
-              <Clock className="h-3 w-3" />
-              {slaStatus.isOverdue ? 'Overdue' : formatDate(slaStatus.date)}
-            </div>
-          )}
+          {/* Right side - SLA and Status badges */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {/* Status Badge on right */}
+            <Badge className={cn(stateConfig.color, stateConfig.darkColor)}>
+              {stateConfig.label || complaint.status}
+            </Badge>
+
+            {/* SLA Indicator */}
+            {showField('slaPromiseDate') && slaStatus && (
+              <div className={cn(
+                'flex items-center gap-1 text-xs px-2 py-1 rounded-full',
+                slaStatus.isOverdue 
+                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
+                  : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+              )}>
+                <Clock className="h-3 w-3" />
+                {slaStatus.isOverdue ? 'Overdue' : formatDate(slaStatus.date)}
+              </div>
+            )}
+          </div>
         </div>
       </CardHeader>
 
@@ -321,10 +333,10 @@ const ComplaintCard = ({
             )}
 
             {/* Created Date */}
-            {showField('createdAt') && (
+            {showField('createdTime') && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                <span>Filed: {formatDate(complaint.createdAt)}</span>
+                <span>Filed: {formatDate(complaint.createdTime || complaint.createdAt)}</span>
               </div>
             )}
 

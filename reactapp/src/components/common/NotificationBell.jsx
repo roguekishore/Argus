@@ -96,7 +96,7 @@ const NotificationBell = ({
    * Marks as read and optionally navigates
    */
   const handleNotificationClick = useCallback(async (notification) => {
-    if (!notification.read) {
+    if (!notification.isRead) {
       await markAsRead(notification.id);
     }
   }, [markAsRead]);

@@ -125,7 +125,7 @@ const NotificationItem = ({
     title, 
     message, 
     type = 'GENERAL', 
-    read, 
+    isRead, 
     createdAt,
     complaintId,
   } = notification;
@@ -154,11 +154,11 @@ const NotificationItem = ({
         'relative flex gap-3 p-3 cursor-pointer transition-colors',
         'hover:bg-muted/50',
         'border-b border-border last:border-b-0',
-        !read && config.bgColor
+        !isRead && config.bgColor
       )}
     >
       {/* Unread indicator */}
-      {!read && (
+      {!isRead && (
         <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" />
       )}
 
@@ -175,8 +175,8 @@ const NotificationItem = ({
         <div className="flex items-start justify-between gap-2">
           <p className={cn(
             'text-sm font-medium truncate',
-            !read && 'text-foreground',
-            read && 'text-muted-foreground'
+            !isRead && 'text-foreground',
+            isRead && 'text-muted-foreground'
           )}>
             {title}
           </p>
@@ -187,8 +187,8 @@ const NotificationItem = ({
         
         <p className={cn(
           'text-xs line-clamp-2',
-          !read && 'text-muted-foreground',
-          read && 'text-muted-foreground/70'
+          !isRead && 'text-muted-foreground',
+          isRead && 'text-muted-foreground/70'
         )}>
           {message}
         </p>

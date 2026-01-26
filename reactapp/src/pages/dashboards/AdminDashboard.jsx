@@ -22,7 +22,8 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "../../components/ui";
-import { ComplaintList, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { ComplaintList, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { UserManagement, DepartmentManagement, CategoryManagement, SLAManagement } from "../../components/admin";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
@@ -177,6 +178,10 @@ const AdminDashboard = () => {
   // Local state for management data
   const [departments, setDepartments] = useState([]);
   
+  // Complaint detail view state
+  const [selectedComplaintId, setSelectedComplaintId] = useState(null);
+  const [previousActiveItem, setPreviousActiveItem] = useState("complaints-all");
+  
   // State for pending routing complaints
   const [pendingRoutingComplaints, setPendingRoutingComplaints] = useState([]);
   const [pendingRoutingCount, setPendingRoutingCount] = useState(0);
@@ -247,13 +252,14 @@ const AdminDashboard = () => {
   ], [stats, complaints, pendingRoutingCount]);
 
   // Filter complaints based on active menu item
+  // Note: Backend returns 'status' property, not 'state'
   const filteredComplaints = useMemo(() => {
     switch (activeItem) {
       case 'complaints-filed':
-        return complaints.filter(c => c.state === COMPLAINT_STATES.FILED);
+        return complaints.filter(c => c.status === COMPLAINT_STATES.FILED);
       case 'complaints-resolved':
         return complaints.filter(c => 
-          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.state)
+          [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(c.status)
         );
       case 'escalations':
         return complaints.filter(c => c.escalationLevel > 0);
@@ -265,13 +271,33 @@ const AdminDashboard = () => {
 
   // ==========================================================================
   // ACTION HANDLERS
-  // Admin has READ-ONLY access to complaints, except for manual routing
+  // Admin can only CANCEL complaints, not change to other states
   // ==========================================================================
   
   // View complaint details
   const handleViewDetails = useCallback((complaint) => {
-    navigate(`/dashboard/admin/complaints/${complaint.complaintId || complaint.id}`);
-  }, [navigate]);
+    setSelectedComplaintId(complaint.complaintId || complaint.id);
+    setPreviousActiveItem(activeItem);
+    setActiveItem('complaint-detail');
+  }, [activeItem]);
+
+  // Cancel a complaint (Admin can cancel any complaint)
+  const handleCancelComplaint = useCallback(async (complaintId) => {
+    if (!window.confirm('Are you sure you want to cancel this complaint? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await complaintsService.cancel(complaintId, 'Cancelled by Administrator');
+      await refresh();
+      // Navigate back to the list after cancellation
+      setSelectedComplaintId(null);
+      setActiveItem(previousActiveItem);
+    } catch (err) {
+      console.error('Failed to cancel complaint:', err);
+      alert(err.message || 'Failed to cancel complaint. Please try again.');
+    }
+  }, [refresh, previousActiveItem]);
 
   // Logout
   const handleLogout = useCallback(async () => {
@@ -384,6 +410,23 @@ const AdminDashboard = () => {
   // ==========================================================================
   const renderContent = () => {
     switch (activeItem) {
+      // -----------------------------------------------------------------------
+      // COMPLAINT DETAIL VIEW
+      // Admin can only cancel complaints, not change to other states
+      // -----------------------------------------------------------------------
+      case 'complaint-detail':
+        return (
+          <ComplaintDetailPage
+            complaintId={selectedComplaintId}
+            onCancel={handleCancelComplaint}
+            onBack={() => {
+              setSelectedComplaintId(null);
+              setActiveItem(previousActiveItem);
+            }}
+            role="admin"
+          />
+        );
+
       // -----------------------------------------------------------------------
       // COMPLAINT LISTS (Read-Only)
       // -----------------------------------------------------------------------
@@ -650,66 +693,19 @@ const AdminDashboard = () => {
         );
 
       // -----------------------------------------------------------------------
-      // MANAGEMENT SECTIONS (Entry Points)
+      // MANAGEMENT SECTIONS
       // -----------------------------------------------------------------------
       case 'departments':
-        return (
-          <DashboardSection
-            title="Department Management"
-            description="View and manage departments"
-          >
-            <div className="space-y-2">
-              {departments.length === 0 ? (
-                <p className="text-muted-foreground">Loading departments...</p>
-              ) : (
-                departments.map(dept => (
-                  <div key={dept.id} className="flex items-center justify-between p-3 border rounded-md">
-                    <div className="flex items-center gap-3">
-                      <Building className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">{dept.name}</p>
-                        <p className="text-sm text-muted-foreground">{dept.description || 'No description'}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </DashboardSection>
-        );
+        return <DepartmentManagement />;
 
       case 'users':
-        return (
-          <DashboardSection
-            title="User Management"
-            description="Manage system users and roles"
-          >
-            {/* TODO: Integrate UserManagement component */}
-            <p className="text-muted-foreground">User management interface will be rendered here.</p>
-          </DashboardSection>
-        );
+        return <UserManagement />;
 
       case 'categories':
-        return (
-          <DashboardSection
-            title="Complaint Categories"
-            description="Manage complaint categories and subcategories"
-          >
-            {/* TODO: Integrate CategoryManagement component */}
-            <p className="text-muted-foreground">Category management interface will be rendered here.</p>
-          </DashboardSection>
-        );
+        return <CategoryManagement />;
 
       case 'sla-config':
-        return (
-          <DashboardSection
-            title="SLA Configuration"
-            description="Configure SLA rules for complaint resolution"
-          >
-            {/* TODO: Integrate SLAConfig component */}
-            <p className="text-muted-foreground">SLA configuration interface will be rendered here.</p>
-          </DashboardSection>
-        );
+        return <SLAManagement />;
 
       case 'settings':
         return (
