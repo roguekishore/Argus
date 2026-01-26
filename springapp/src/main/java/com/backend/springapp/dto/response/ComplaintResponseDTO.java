@@ -59,4 +59,13 @@ public class ComplaintResponseDTO {
     // Community engagement (upvotes)
     private Integer upvoteCount;        // Number of "Me Too" upvotes
     private Boolean hasUserUpvoted;     // Whether current user has upvoted (for UI)
+    
+    // Dispute/Signoff info (when complaint has pending or resolved dispute)
+    private Boolean hasDispute;             // Whether a dispute exists
+    private Boolean disputePending;         // Whether dispute is pending review
+    private Boolean disputeApproved;        // Whether dispute was approved (null = pending)
+    private String disputeReason;           // Citizen's dispute reason
+    private String disputeCounterProofUrl;  // Presigned S3 URL for dispute counter-proof image
+    private LocalDateTime disputeCreatedAt; // When dispute was filed
+    private String disputeFeedback;         // Additional feedback from citizen
 }

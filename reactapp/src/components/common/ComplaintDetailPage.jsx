@@ -552,6 +552,79 @@ const ComplaintDetailPage = ({
               )}
             </div>
           )}
+
+          {/* Dispute Counter-Proof Section (when citizen has filed a dispute) */}
+          {complaint.hasDispute && (
+            <div className={`border rounded-lg p-4 ${
+              complaint.disputePending 
+                ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' 
+                : complaint.disputeApproved 
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            }`}>
+              <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
+                complaint.disputePending 
+                  ? 'text-orange-800 dark:text-orange-200' 
+                  : complaint.disputeApproved 
+                    ? 'text-blue-800 dark:text-blue-200'
+                    : 'text-red-800 dark:text-red-200'
+              }`}>
+                <AlertTriangle className="h-4 w-4" />
+                Citizen Dispute
+                {complaint.disputePending && (
+                  <Badge variant="outline" className="ml-2 bg-orange-100 text-orange-800 border-orange-300">
+                    Pending Review
+                  </Badge>
+                )}
+                {complaint.disputeApproved === true && (
+                  <Badge variant="outline" className="ml-2 bg-blue-100 text-blue-800 border-blue-300">
+                    Approved - Reopened
+                  </Badge>
+                )}
+                {complaint.disputeApproved === false && (
+                  <Badge variant="outline" className="ml-2 bg-red-100 text-red-800 border-red-300">
+                    Rejected
+                  </Badge>
+                )}
+              </h3>
+              
+              <div className="space-y-3">
+                {/* Dispute Reason */}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Dispute Reason</p>
+                  <p className="text-sm">{complaint.disputeReason || 'No reason provided'}</p>
+                </div>
+                
+                {/* Additional Feedback */}
+                {complaint.disputeFeedback && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Additional Feedback</p>
+                    <p className="text-sm">{complaint.disputeFeedback}</p>
+                  </div>
+                )}
+                
+                {/* Counter-Proof Image */}
+                {complaint.disputeCounterProofUrl && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Counter-Proof Evidence</p>
+                    <img
+                      src={complaint.disputeCounterProofUrl}
+                      alt="Citizen counter-proof"
+                      className="w-full max-w-md rounded-lg border cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setProofImageModalUrl(complaint.disputeCounterProofUrl)}
+                    />
+                  </div>
+                )}
+                
+                {/* Dispute Date */}
+                {complaint.disputeCreatedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Disputed on: {formatDate(complaint.disputeCreatedAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
 
         {/* Action Buttons */}

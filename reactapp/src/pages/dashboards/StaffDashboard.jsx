@@ -43,7 +43,9 @@ import {
   RefreshCw,
   TrendingUp,
   Upload,
+  Trophy,
 } from "lucide-react";
+import { StaffLeaderboard } from "../../components/gamification";
 
 // =============================================================================
 // MENU CONFIGURATION
@@ -84,6 +86,11 @@ const staffMenuItems = [
         id: "escalated",
         label: "Escalated (View Only)",
         icon: <AlertTriangle className="h-4 w-4" />,
+      },
+      {
+        id: "performance",
+        label: "Performance Board",
+        icon: <Trophy className="h-4 w-4" />,
       },
     ],
   },
@@ -416,7 +423,19 @@ const StaffDashboard = () => {
             />
           </div>
         );
-
+      // -----------------------------------------------------------------------
+      // PERFORMANCE LEADERBOARD
+      // -----------------------------------------------------------------------
+      case 'performance':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="Staff Performance Board"
+              description="See how you rank among all staff members"
+            />
+            <StaffLeaderboard limit={20} />
+          </div>
+        );
       // -----------------------------------------------------------------------
       // DASHBOARD (DEFAULT) - Overview
       // -----------------------------------------------------------------------
@@ -500,6 +519,9 @@ const StaffDashboard = () => {
                 onViewDetails={handleViewDetails}
               />
             </DashboardSection>
+
+            {/* Staff Leaderboard - Compact */}
+            <StaffLeaderboard limit={5} compact showTitle={true} />
           </div>
         );
     }

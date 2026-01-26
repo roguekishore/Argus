@@ -33,12 +33,147 @@ public class AIService {
     
     // Gemini 2.0 Flash supports multimodal (image + text) analysis
     private static final String GEMINI_MULTIMODAL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    
+    // Minimum confidence for complaint to be considered valid/clear
+    private static final double VALIDATION_CONFIDENCE_THRESHOLD = 0.4;
 
     @Autowired
     private SLARepository slaRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // ==================== PRE-SUBMISSION VALIDATION ====================
+    
+    /**
+     * Validate complaint text BEFORE submission to prevent vague complaints.
+     * 
+     * This is a lightweight check that runs when user clicks "Submit" to:
+     * 1. Check if the complaint is specific enough to process
+     * 2. Provide immediate feedback to improve the complaint
+     * 3. Prevent vague complaints from clogging the admin queue
+     * 
+     * @param title Complaint title/subject
+     * @param description Complaint description
+     * @param location Optional location string
+     * @return ValidationResult with isValid, message, and suggestion
+     */
+    public ValidationResult validateComplaintText(String title, String description, String location) {
+        try {
+            log.info("🔍 Validating complaint - Title: '{}', Description: '{}'", title, description);
+            String prompt = buildValidationPrompt(title, description, location);
+            String response = callGeminiAPI(prompt);  // Now uses retry with JSON enforcement
+            log.info("🤖 AI validation response: {}", response);
+            ValidationResult result = parseValidationResponse(response);
+            log.info("✅ Validation result - isValid: {}, message: {}", result.isValid, result.message);
+            return result;
+        } catch (Exception e) {
+            log.error("❌ Validation check failed after retries: {}", e.getMessage());
+            // On error, REJECT with a helpful message to be safe during pitch
+            return new ValidationResult(
+                false, 
+                "Please provide a clearer description of the municipal issue you're facing (e.g., pothole, garbage, streetlight).", 
+                "Try describing the specific infrastructure problem and its location.", 
+                0.0, 
+                null
+            );
+        }
+    }
+    
+    private String buildValidationPrompt(String title, String description, String location) {
+        return String.format("""
+            You are a STRICT gatekeeper for a Municipal Grievance System. 
+            You must REJECT anything that is NOT a valid civic/municipal complaint.
+            
+            IMPORTANT: You MUST respond with ONLY a JSON object. No explanations, no text before or after.
+            
+            ## INPUT:
+            Title: %s
+            Description: %s
+            
+            ## VALID CIVIC COMPLAINTS (isValid: true):
+            These are about PUBLIC INFRASTRUCTURE managed by municipality:
+            - "pothole on road" → VALID
+            - "garbage not collected" → VALID  
+            - "streetlight not working" → VALID
+            - "water leak in street" → VALID
+            - "drainage blocked" → VALID
+            - "road damaged" → VALID
+            
+            ## INVALID - REJECT THESE (isValid: false):
+            
+            Personal/Non-civic matters:
+            - "I want to eat" → INVALID (personal need)
+            - "I want to dance" → INVALID (personal activity)
+            - "eat eat" → INVALID (nonsense)
+            - "I'm hungry" → INVALID (personal)
+            - "I need a job" → INVALID (not municipal)
+            - "help me" → INVALID (too vague)
+            
+            Gibberish:
+            - "asdfasdf" → INVALID
+            - "lkxjnkjvnkjn" → INVALID
+            - "test test" → INVALID
+            
+            ## CRITICAL RULES:
+            1. The complaint MUST mention a PUBLIC INFRASTRUCTURE issue.
+            2. If it talks about personal wants, food, dancing, personal activities → REJECT.
+            3. If you cannot identify a specific municipal service issue → REJECT.
+            4. RESPOND WITH JSON ONLY - NO OTHER TEXT!
+            
+            ## OUTPUT FORMAT (respond with ONLY this JSON, nothing else):
+            For INVALID complaints:
+            {"isValid": false, "message": "This is not a municipal complaint. Please describe an issue with public services like roads, water, garbage, or streetlights.", "suggestion": null, "confidence": 0.9}
+            
+            For VALID complaints:
+            {"isValid": true, "message": "OK", "suggestion": null, "confidence": 0.9}
+            """,
+            title != null ? title : "",
+            description != null ? description : ""
+        );
+    }
+    
+    private ValidationResult parseValidationResponse(String response) throws Exception {
+        String cleanJson = response.trim();
+        if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.replaceAll("```json\\s*", "").replaceAll("```\\s*", "");
+        }
+        
+        JsonNode json = objectMapper.readTree(cleanJson);
+        
+        double confidence = json.path("confidence").asDouble(0.7);
+        // Trust the AI's isValid decision - don't override with confidence threshold
+        boolean isValid = json.path("isValid").asBoolean(true);
+        
+        return new ValidationResult(
+            isValid,
+            json.path("message").asText(""),
+            json.path("suggestion").isNull() ? null : json.path("suggestion").asText(),
+            confidence,
+            json.path("category").isNull() ? null : json.path("category").asText()
+        );
+    }
+    
+    /**
+     * Pre-submission validation result
+     */
+    public static class ValidationResult {
+        public final boolean isValid;
+        public final String message;
+        public final String suggestion;
+        public final double confidence;
+        public final String detectedCategory;
+        
+        public ValidationResult(boolean isValid, String message, String suggestion, double confidence, String detectedCategory) {
+            this.isValid = isValid;
+            this.message = message;
+            this.suggestion = suggestion;
+            this.confidence = confidence;
+            this.detectedCategory = detectedCategory;
+        }
+    }
+
+    // ==================== COMPLAINT ANALYSIS ====================
 
     /**
      * Analyze complaint and return AI decision
@@ -184,12 +319,16 @@ public class AIService {
     }
 
     private String callGeminiAPI(String prompt) throws Exception {
+        return callGeminiAPIWithRetry(prompt, 3);
+    }
+    
+    private String callGeminiAPIWithRetry(String prompt, int maxRetries) throws Exception {
         String url = GEMINI_URL + "?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        // Gemini API request format
+        // Gemini API request format with STRICT JSON mode
         Map<String, Object> requestBody = Map.of(
             "contents", List.of(
                 Map.of("parts", List.of(
@@ -198,17 +337,48 @@ public class AIService {
             ),
             "generationConfig", Map.of(
                 "temperature", 0.1,
-                "maxOutputTokens", 256
+                "maxOutputTokens", 256,
+                "responseMimeType", "application/json"  // STRICT: Force JSON output
             )
         );
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+        Exception lastException = null;
         
-        String response = restTemplate.postForObject(url, request, String.class);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+                String response = restTemplate.postForObject(url, request, String.class);
+                
+                // Extract text from Gemini response
+                JsonNode root = objectMapper.readTree(response);
+                String text = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
+                
+                // Validate it's actually JSON before returning
+                validateJsonResponse(text);
+                return text;
+                
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("⚠️ Gemini API attempt {}/{} failed: {}", attempt, maxRetries, e.getMessage());
+                if (attempt < maxRetries) {
+                    Thread.sleep(500 * attempt); // Exponential backoff
+                }
+            }
+        }
         
-        // Extract text from Gemini response
-        JsonNode root = objectMapper.readTree(response);
-        return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
+        throw lastException != null ? lastException : new RuntimeException("Gemini API failed after " + maxRetries + " attempts");
+    }
+    
+    /**
+     * Validate that the response is valid JSON
+     */
+    private void validateJsonResponse(String response) throws Exception {
+        String cleanJson = response.trim();
+        if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.replaceAll("```json\\s*", "").replaceAll("```\\s*", "");
+        }
+        // This will throw if not valid JSON
+        objectMapper.readTree(cleanJson);
     }
     
     /**
@@ -218,6 +388,10 @@ public class AIService {
      * This enables visual analysis alongside text-based classification.
      */
     private String callGeminiMultimodalAPI(String prompt, byte[] imageBytes, String mimeType) throws Exception {
+        return callGeminiMultimodalAPIWithRetry(prompt, imageBytes, mimeType, 3);
+    }
+    
+    private String callGeminiMultimodalAPIWithRetry(String prompt, byte[] imageBytes, String mimeType, int maxRetries) throws Exception {
         String url = GEMINI_MULTIMODAL_URL + "?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
@@ -226,7 +400,7 @@ public class AIService {
         // Encode image to base64
         String base64Image = Base64.getEncoder().encodeToString(imageBytes);
         
-        // Build multimodal request (text + image parts)
+        // Build multimodal request (text + image parts) with STRICT JSON mode
         Map<String, Object> requestBody = Map.of(
             "contents", List.of(
                 Map.of("parts", List.of(
@@ -241,21 +415,39 @@ public class AIService {
             ),
             "generationConfig", Map.of(
                 "temperature", 0.1,
-                "maxOutputTokens", 512  // More tokens for image analysis
+                "maxOutputTokens", 512,  // More tokens for image analysis
+                "responseMimeType", "application/json"  // STRICT: Force JSON output
             )
         );
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+        Exception lastException = null;
         
-        log.info("📷 Calling Gemini multimodal API with image...");
-        String response = restTemplate.postForObject(url, request, String.class);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+                
+                log.info("📷 Calling Gemini multimodal API with image (attempt {}/{})...", attempt, maxRetries);
+                String response = restTemplate.postForObject(url, request, String.class);
+                
+                // Extract text from Gemini response
+                JsonNode root = objectMapper.readTree(response);
+                String text = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
+                log.info("✅ Gemini multimodal response received");
+                
+                // Validate it's actually JSON before returning
+                validateJsonResponse(text);
+                return text;
+                
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("⚠️ Gemini multimodal API attempt {}/{} failed: {}", attempt, maxRetries, e.getMessage());
+                if (attempt < maxRetries) {
+                    Thread.sleep(500 * attempt); // Exponential backoff
+                }
+            }
+        }
         
-        // Extract text from Gemini response
-        JsonNode root = objectMapper.readTree(response);
-        String text = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
-        log.info("✅ Gemini multimodal response received");
-        
-        return text;
+        throw lastException != null ? lastException : new RuntimeException("Gemini multimodal API failed after " + maxRetries + " attempts");
     }
 
     private AIDecision parseResponse(String response) throws Exception {

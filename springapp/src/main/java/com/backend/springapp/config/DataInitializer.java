@@ -1,6 +1,7 @@
 package com.backend.springapp.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
@@ -39,18 +40,29 @@ public class DataInitializer implements CommandLineRunner {
     @Autowired
     private SLARepository slaRepository;
 
+    @Value("${app.init-sample-data:false}")
+    private boolean initSampleData;
+
     private static final String DEFAULT_PASSWORD = "argusargus";
 
     @Override
     public void run(String... args) throws Exception {
+        // Always initialize reference data (required for application to function)
         initializeDepartments();
         initializeCategories();
         initializeSLAConfigs();
-        initializeSampleStaff();
-        initializeCitizenUser();
-        initializeAdminUser();
-        initializeSuperAdminUser();
-        initializeMunicipalCommissionerUser();
+        
+        // Only initialize sample/test users in development/testing environments
+        if (initSampleData) {
+            System.out.println("⚠️  Initializing sample data (development mode)...");
+            initializeSampleStaff();
+            initializeCitizenUser();
+            initializeAdminUser();
+            initializeSuperAdminUser();
+            initializeMunicipalCommissionerUser();
+        } else {
+            System.out.println("✓ Skipping sample data initialization (production mode)");
+        }
     }
 
     /**

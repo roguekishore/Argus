@@ -79,9 +79,11 @@ public interface CitizenSignoffRepository extends JpaRepository<CitizenSignoff, 
     /**
      * Find all pending disputes for a department.
      * Used by DEPT_HEAD to see disputes they need to review.
+     * Eagerly fetches complaint and citizen for DTO conversion.
      */
     @Query("SELECT cs FROM CitizenSignoff cs " +
-           "JOIN cs.complaint c " +
+           "JOIN FETCH cs.complaint c " +
+           "LEFT JOIN FETCH cs.citizen " +
            "WHERE c.departmentId = :departmentId " +
            "AND cs.isAccepted = false " +
            "AND cs.disputeApproved IS NULL " +

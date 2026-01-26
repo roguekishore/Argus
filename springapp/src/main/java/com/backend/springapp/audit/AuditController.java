@@ -51,6 +51,71 @@ public class AuditController {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // SYSTEM-WIDE ENDPOINTS (Super Admin)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Get recent audit logs system-wide.
+     * 
+     * Returns the most recent audit logs across all entities.
+     * Intended for Super Admin dashboard overview.
+     * 
+     * Example: GET /api/audit/recent?limit=100
+     * 
+     * @param limit Maximum number of logs to return (default 100, max 500)
+     * @return List of recent audit logs, newest first
+     */
+    @GetMapping("/recent")
+    public ResponseEntity<List<AuditLogDTO>> getRecentAuditLogs(
+            @RequestParam(defaultValue = "100") int limit) {
+        
+        log.debug("Fetching recent audit logs, limit: {}", limit);
+        
+        // Cap the limit to prevent excessive data retrieval
+        int cappedLimit = Math.min(limit, 500);
+
+        List<AuditLog> logs = auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, cappedLimit, 
+                        org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+        ).getContent();
+
+        List<AuditLogDTO> dtos = logs.stream()
+                .map(AuditLogDTO::fromEntity)
+                .collect(Collectors.toList());
+
+        log.debug("Returning {} recent audit logs", dtos.size());
+
+        return ResponseEntity.ok(dtos);
+    }
+
+    /**
+     * Get audit log statistics.
+     * 
+     * Returns summary counts for dashboard widgets.
+     * 
+     * Example: GET /api/audit/stats
+     * 
+     * @return Audit statistics
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<java.util.Map<String, Object>> getAuditStats() {
+        log.debug("Fetching audit statistics");
+        
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        stats.put("totalLogs", auditLogRepository.count());
+        
+        // Count by action type
+        java.util.Map<String, Long> actionCounts = new java.util.HashMap<>();
+        for (AuditAction action : AuditAction.values()) {
+            long count = auditLogRepository.findByActionOrderByCreatedAtDesc(action).size();
+            actionCounts.put(action.name(), count);
+        }
+        stats.put("byAction", actionCounts);
+        
+        return ResponseEntity.ok(stats);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // COMPLAINT-CENTRIC ENDPOINTS
     // ═══════════════════════════════════════════════════════════════════════════
 

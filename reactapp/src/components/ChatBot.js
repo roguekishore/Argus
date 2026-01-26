@@ -3,7 +3,8 @@ import { Button, Card, CardContent, Input, Avatar, AvatarFallback, ScrollArea, S
 import { ThemeToggle } from './theme-toggle';
 import { Send, RotateCcw, Building2, User, Bot } from 'lucide-react';
 
-const API_URL = 'http://localhost:8080/api/chat';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_URL = `${API_BASE_URL}/chat`;
 
 function ChatBot() {
   const [messages, setMessages] = useState([]);

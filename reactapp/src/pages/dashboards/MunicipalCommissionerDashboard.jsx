@@ -33,7 +33,9 @@ import {
   Scale,
   FileText,
   Eye,
+  Trophy,
 } from "lucide-react";
+import { CitizenLeaderboard, StaffLeaderboard } from "../../components/gamification";
 
 // =============================================================================
 // MENU CONFIGURATION
@@ -67,6 +69,16 @@ const commissionerMenuItems = [
         id: "level-2",
         label: "Level 2+ (Commissioner)",
         icon: <Scale className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Performance",
+    items: [
+      {
+        id: "leaderboards",
+        label: "Leaderboards",
+        icon: <Trophy className="h-4 w-4" />,
       },
     ],
   },
@@ -238,6 +250,23 @@ const MunicipalCommissionerDashboard = () => {
               onViewDetails={handleViewDetails}
               // No action handlers - read-only view
             />
+          </div>
+        );
+
+      // -----------------------------------------------------------------------
+      // LEADERBOARDS
+      // -----------------------------------------------------------------------
+      case 'leaderboards':
+        return (
+          <div className="space-y-6">
+            <PageHeader
+              title="City-Wide Leaderboards"
+              description="Citizen engagement and staff performance across all departments"
+            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CitizenLeaderboard limit={10} />
+              <StaffLeaderboard limit={10} />
+            </div>
           </div>
         );
 

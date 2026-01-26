@@ -21,3 +21,6 @@ export { default as signoffService } from './signoffService';
 
 // Community features (upvoting, nearby complaints)
 export { default as communityService } from './communityService';
+
+// Gamification (leaderboards, points)
+export { default as gamificationService } from './gamificationService';

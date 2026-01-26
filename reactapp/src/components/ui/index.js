@@ -8,6 +8,7 @@ export { Badge, badgeVariants } from "./badge";
 export { Skeleton } from "./skeleton";
 export { Separator } from "./separator";
 export { ScrollArea } from "./scroll-area";
+export { Progress } from "./progress";
 export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 export { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "./sheet";
 export { 
