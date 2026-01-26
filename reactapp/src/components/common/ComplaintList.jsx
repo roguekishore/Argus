@@ -26,6 +26,7 @@ import { cn } from '../../lib/utils';
  * @param {Function} props.onReassign - Passed to ComplaintCard
  * @param {Function} props.onViewDetails - Passed to ComplaintCard
  * @param {Function} props.onRate - Passed to ComplaintCard
+ * @param {number|string} props.currentUserId - Current user ID for checking assignment
  * @param {string} props.className - Additional CSS classes
  */
 const ComplaintList = ({
@@ -40,6 +41,7 @@ const ComplaintList = ({
   onReassign,
   onViewDetails,
   onRate,
+  currentUserId,
   className,
 }) => {
   // Loading state
@@ -71,7 +73,7 @@ const ComplaintList = ({
     <div className={cn('space-y-4', className)}>
       {complaints.map((complaint) => (
         <ComplaintCard
-          key={complaint.id}
+          key={complaint.id || complaint.complaintId}
           complaint={complaint}
           compact={compact}
           onClose={onClose}
@@ -81,6 +83,7 @@ const ComplaintList = ({
           onReassign={onReassign}
           onViewDetails={onViewDetails}
           onRate={onRate}
+          currentUserId={currentUserId}
         />
       ))}
     </div>

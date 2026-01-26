@@ -24,11 +24,11 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import { Button } from "../../components/ui";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
-import { ComplaintList, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid } from "../../components/common";
+import { ComplaintList, ComplaintDetailPage, DashboardSection, PageHeader, StatsGrid, StaffAssignmentModal, ResolutionProofForm } from "../../components/common";
 import { useUser } from "../../context/UserContext";
 import { useComplaints } from "../../hooks/useComplaints";
 import { useAuth } from "../../hooks/useAuth";
-import { usersService, disputeService } from "../../services";
+import { usersService, disputeService, resolutionProofService } from "../../services";
 import { COMPLAINT_STATES, ROLE_DISPLAY_NAMES } from "../../constants/roles";
 import {
   LayoutDashboard,
@@ -44,6 +44,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   Eye,
+  Upload,
 } from "lucide-react";
 
 // =============================================================================
@@ -145,6 +146,16 @@ const DepartmentHeadDashboard = () => {
   const [pendingDisputes, setPendingDisputes] = useState([]);
   const [disputesLoading, setDisputesLoading] = useState(false);
   const [disputeActionLoading, setDisputeActionLoading] = useState({});
+
+  // Staff assignment modal state
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [selectedComplaintForAssignment, setSelectedComplaintForAssignment] = useState(null);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+
+  // Resolution proof state (for when dept head resolves their own complaints)
+  const [proofStatus, setProofStatus] = useState({}); // { complaintId: true/false }
+  const [proofLoading, setProofLoading] = useState({}); // { complaintId: true/false }
+  const [selectedComplaintForProof, setSelectedComplaintForProof] = useState(null);
 
   // Fetch department staff for reassignment
   useEffect(() => {
@@ -252,37 +263,110 @@ const DepartmentHeadDashboard = () => {
   // ==========================================================================
   // ACTION HANDLERS
   // ==========================================================================
-  
-  // Resolve a complaint
+
+  // Check if a complaint has proof (cached or fetch)
+  const checkProofStatus = useCallback(async (complaintId) => {
+    if (proofStatus[complaintId] !== undefined) {
+      return proofStatus[complaintId];
+    }
+    try {
+      const hasProof = await resolutionProofService.hasProof(complaintId);
+      setProofStatus(prev => ({ ...prev, [complaintId]: hasProof }));
+      return hasProof;
+    } catch (err) {
+      console.error('Failed to check proof status:', err);
+      return false;
+    }
+  }, [proofStatus]);
+
+  // Handle proof submission - uploads proof AND resolves the complaint
+  const handleSubmitProof = useCallback(async (proofData) => {
+    const { complaintId, image, description } = proofData;
+    setProofLoading(prev => ({ ...prev, [complaintId]: true }));
+    
+    try {
+      // Step 1: Upload the resolution proof
+      await resolutionProofService.submit(complaintId, { description }, image);
+      setProofStatus(prev => ({ ...prev, [complaintId]: true }));
+      
+      // Step 2: Automatically resolve the complaint after proof upload
+      await resolveComplaint(complaintId);
+      
+      setSelectedComplaintForProof(null);
+      
+      // Step 3: Refresh complaints list to show updated status
+      await refresh();
+    } catch (err) {
+      console.error('Failed to submit proof and resolve:', err);
+      throw err;
+    } finally {
+      setProofLoading(prev => ({ ...prev, [complaintId]: false }));
+    }
+  }, [resolveComplaint, refresh]);
+
+  // Handle resolve with proof guard (only if assigned to this dept head)
   const handleResolveComplaint = useCallback(async (complaintId) => {
+    const hasProof = await checkProofStatus(complaintId);
+    if (!hasProof) {
+      // Show proof form instead
+      setSelectedComplaintForProof(complaintId);
+      return;
+    }
+    // Proof exists, proceed with resolve
     try {
       await resolveComplaint(complaintId);
-      // Refresh complaints list to show updated status
       await refresh();
     } catch (err) {
       console.error('Failed to resolve complaint:', err);
     }
-  }, [resolveComplaint, refresh]);
+  }, [checkProofStatus, resolveComplaint, refresh]);
 
-  // Reassign complaint to different staff
-  const handleReassign = useCallback(async (complaint) => {
-    // TODO: Open a staff selection modal
-    // For now, using a simple prompt
-    const complaintId = complaint.complaintId || complaint.id;
-    const staffOptions = departmentStaff.map(s => `${s.id}: ${s.name}`).join('\n');
-    const staffId = window.prompt(`Select staff ID to assign:\n${staffOptions}`);
-    if (staffId) {
-      try {
-        await assignStaff(complaintId, staffId);
-        // Refresh unassigned list and all complaints
-        const data = await getUnassigned();
-        setUnassignedComplaints(Array.isArray(data) ? data : []);
-        await refresh();
-      } catch (err) {
-        console.error('Failed to assign staff:', err);
-      }
+  // Check if complaint is assigned to this dept head (can resolve)
+  const canResolveComplaint = useCallback((complaint) => {
+    const staffId = complaint.staffId || complaint.assignedStaffId;
+    return staffId && String(staffId) === String(userId);
+  }, [userId]);
+
+  // Conditional resolve handler - only for dept head's own complaints
+  const getResolveHandler = useCallback((complaint) => {
+    return canResolveComplaint(complaint) ? handleResolveComplaint : undefined;
+  }, [canResolveComplaint, handleResolveComplaint]);
+
+  // Open staff assignment modal
+  const handleReassign = useCallback((complaint) => {
+    setSelectedComplaintForAssignment(complaint);
+    setAssignmentModalOpen(true);
+  }, []);
+
+  // Handle staff selection from modal
+  const handleStaffAssignment = useCallback(async (staffId) => {
+    if (!selectedComplaintForAssignment) return;
+    
+    const complaintId = selectedComplaintForAssignment.complaintId || selectedComplaintForAssignment.id;
+    setAssignmentLoading(true);
+    
+    try {
+      await assignStaff(complaintId, staffId);
+      // Close modal and refresh data
+      setAssignmentModalOpen(false);
+      setSelectedComplaintForAssignment(null);
+      // Refresh unassigned list and all complaints
+      const data = await getUnassigned();
+      setUnassignedComplaints(Array.isArray(data) ? data : []);
+      await refresh();
+    } catch (err) {
+      console.error('Failed to assign staff:', err);
+      alert('Failed to assign staff: ' + (err.message || 'Unknown error'));
+    } finally {
+      setAssignmentLoading(false);
     }
-  }, [departmentStaff, assignStaff, getUnassigned, refresh]);
+  }, [selectedComplaintForAssignment, assignStaff, getUnassigned, refresh]);
+
+  // Close assignment modal
+  const handleCloseAssignmentModal = useCallback(() => {
+    setAssignmentModalOpen(false);
+    setSelectedComplaintForAssignment(null);
+  }, []);
 
   // View complaint details
   const handleViewDetails = useCallback((complaint) => {
@@ -385,6 +469,7 @@ const DepartmentHeadDashboard = () => {
           <ComplaintDetailPage
             complaintId={selectedComplaintId}
             onResolve={handleResolveComplaint}
+            currentUserId={userId}
             onBack={() => {
               setSelectedComplaintId(null);
               setActiveItem('all-complaints');
@@ -438,6 +523,7 @@ const DepartmentHeadDashboard = () => {
               onResolve={handleResolveComplaint}
               onReassign={handleReassign}
               onViewDetails={handleViewDetails}
+              currentUserId={userId}
             />
           </div>
         );
@@ -483,6 +569,7 @@ const DepartmentHeadDashboard = () => {
               onResolve={handleResolveComplaint}
               onReassign={handleReassign}
               onViewDetails={handleViewDetails}
+              currentUserId={userId}
             />
           </div>
         );
@@ -731,8 +818,10 @@ const DepartmentHeadDashboard = () => {
                   isLoading={isLoading}
                   emptyMessage="All complaints are assigned."
                   compact={true}
+                  onResolve={handleResolveComplaint}
                   onReassign={handleReassign}
                   onViewDetails={handleViewDetails}
+                  currentUserId={userId}
                 />
               </DashboardSection>
             )}
@@ -759,6 +848,7 @@ const DepartmentHeadDashboard = () => {
                 onResolve={handleResolveComplaint}
                 onReassign={handleReassign}
                 onViewDetails={handleViewDetails}
+                currentUserId={userId}
               />
             </DashboardSection>
           </div>
@@ -784,6 +874,42 @@ const DepartmentHeadDashboard = () => {
         </div>
       )}
       {renderContent()}
+      
+      {/* Staff Assignment Modal */}
+      <StaffAssignmentModal
+        isOpen={assignmentModalOpen}
+        onClose={handleCloseAssignmentModal}
+        onAssign={handleStaffAssignment}
+        staffList={departmentStaff}
+        complaint={selectedComplaintForAssignment}
+        isLoading={assignmentLoading}
+      />
+
+      {/* Resolution Proof Form Modal */}
+      {selectedComplaintForProof && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload Resolution Proof
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                You must upload proof before marking this complaint as resolved.
+              </p>
+            </div>
+            <div className="p-4">
+              <ResolutionProofForm
+                complaintId={selectedComplaintForProof}
+                onSubmit={handleSubmitProof}
+                onCancel={() => setSelectedComplaintForProof(null)}
+                isLoading={proofLoading[selectedComplaintForProof]}
+                hasExistingProof={proofStatus[selectedComplaintForProof]}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

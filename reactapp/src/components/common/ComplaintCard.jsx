@@ -66,6 +66,7 @@ const EXTENDED_FIELDS = [
  * @param {Function} props.onReassign - Callback when complaint is reassigned
  * @param {Function} props.onViewDetails - Callback to view full details
  * @param {Function} props.onRate - Callback to rate complaint resolution
+ * @param {number|string} props.currentUserId - Current logged-in user ID (for checking if complaint is assigned to user)
  * @param {Array} props.visibleFields - Array of field names to display (optional)
  * @param {boolean} props.showAllFields - Show all available fields
  * @param {boolean} props.compact - Compact mode for lists
@@ -80,6 +81,7 @@ const ComplaintCard = ({
   onReassign,
   onViewDetails,
   onRate,
+  currentUserId,
   visibleFields,
   showAllFields = false,
   compact = false,
@@ -152,8 +154,9 @@ const ComplaintCard = ({
       });
     }
 
-    // Rate - for resolved/closed complaints
-    if (onRate && [COMPLAINT_STATES.RESOLVED, COMPLAINT_STATES.CLOSED].includes(complaint.status) && !complaint.rating) {
+    // Rate - only for resolved complaints that haven't been rated yet
+    // Once closed (via signoff), the rating has already been submitted
+    if (onRate && complaint.status === COMPLAINT_STATES.RESOLVED && !complaint.rating) {
       available.push({
         key: 'rate',
         label: 'Rate Service',
@@ -164,18 +167,23 @@ const ComplaintCard = ({
     }
 
     // Resolve - staff/dept head can resolve in-progress complaints
+    // If currentUserId is provided, only show resolve if complaint is assigned to that user
     if (onResolve && complaint.status === COMPLAINT_STATES.IN_PROGRESS) {
-      available.push({
-        key: 'resolve',
-        label: 'Resolve',
-        icon: <CheckCircle2 className="h-3 w-3 mr-1" />,
-        variant: 'default',
-        onClick: () => onResolve(complaint.id || complaint.complaintId),
-      });
+      const complaintStaffId = complaint.staffId || complaint.assignedStaffId;
+      const canResolve = !currentUserId || (complaintStaffId && String(complaintStaffId) === String(currentUserId));
+      if (canResolve) {
+        available.push({
+          key: 'resolve',
+          label: 'Resolve',
+          icon: <CheckCircle2 className="h-3 w-3 mr-1" />,
+          variant: 'default',
+          onClick: () => onResolve(complaint.id || complaint.complaintId),
+        });
+      }
     }
-
-    // Reassign/Assign - dept head can assign/reassign
-    if (onReassign && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED].includes(complaint.status)) {
+    
+    // Reassign/Assign - dept head can assign/reassign (not for closed, cancelled, or resolved)
+    if (onReassign && ![COMPLAINT_STATES.CLOSED, COMPLAINT_STATES.CANCELLED, COMPLAINT_STATES.RESOLVED].includes(complaint.status)) {
       // Show "Assign" if no staff assigned, "Reassign" if already assigned
       const isUnassigned = !complaint.staffId && !complaint.assignedStaff;
       available.push({

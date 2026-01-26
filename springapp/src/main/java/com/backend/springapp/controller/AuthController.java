@@ -82,9 +82,9 @@ public class AuthController {
         response.put("name", user.getName());
         response.put("phone", user.getMobile());
         
-        // Include departmentId if user has one
-        if (user.getDepartment() != null) {
-            response.put("departmentId", user.getDepartment().getId());
+        // Include departmentId if user has one (use deptId field directly)
+        if (user.getDeptId() != null) {
+            response.put("departmentId", user.getDeptId());
         }
         
         return ResponseEntity.ok(response);

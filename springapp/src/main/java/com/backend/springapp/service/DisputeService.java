@@ -27,6 +27,7 @@ import com.backend.springapp.notification.NotificationService;
 import com.backend.springapp.notification.NotificationType;
 import com.backend.springapp.repository.CitizenSignoffRepository;
 import com.backend.springapp.repository.ComplaintRepository;
+import com.backend.springapp.repository.ResolutionProofRepository;
 import com.backend.springapp.repository.SLARepository;
 import com.backend.springapp.security.UserContext;
 import com.backend.springapp.security.UserRole;
@@ -80,18 +81,21 @@ public class DisputeService {
     private final SLARepository slaRepository;
     private final AuditService auditService;
     private final NotificationService notificationService;
+    private final ResolutionProofRepository resolutionProofRepository;
     
     public DisputeService(
             CitizenSignoffRepository citizenSignoffRepository,
             ComplaintRepository complaintRepository,
             SLARepository slaRepository,
             AuditService auditService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            ResolutionProofRepository resolutionProofRepository) {
         this.citizenSignoffRepository = citizenSignoffRepository;
         this.complaintRepository = complaintRepository;
         this.slaRepository = slaRepository;
         this.auditService = auditService;
         this.notificationService = notificationService;
+        this.resolutionProofRepository = resolutionProofRepository;
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +231,17 @@ public class DisputeService {
         signoff.setDisputeApprovedBy(userContext.userId());
         signoff.setDisputeReviewedAt(LocalDateTime.now());
         citizenSignoffRepository.save(signoff);
+        
+        // ========== STEP 7.5: Invalidate old resolution proofs ==========
+        // When a dispute is approved, the staff must submit NEW proof.
+        // Delete all existing proofs so hasProof() returns false.
+        List<com.backend.springapp.model.ResolutionProof> oldProofs = 
+            resolutionProofRepository.findByComplaintId(complaintId);
+        if (!oldProofs.isEmpty()) {
+            log.info("Deleting {} old resolution proofs for reopened complaint {}", 
+                oldProofs.size(), complaintId);
+            resolutionProofRepository.deleteAll(oldProofs);
+        }
         
         // ========== STEP 8: Reopen the complaint ==========
         ComplaintStatus oldStatus = complaint.getStatus();
