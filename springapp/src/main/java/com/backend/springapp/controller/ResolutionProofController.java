@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -20,12 +19,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.backend.springapp.dto.request.ResolutionProofRequest;
 import com.backend.springapp.dto.response.ResolutionProofResponse;
-import com.backend.springapp.enums.UserType;
-import com.backend.springapp.exception.ResourceNotFoundException;
-import com.backend.springapp.model.User;
-import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.security.UserContext;
-import com.backend.springapp.security.UserRole;
+import com.backend.springapp.security.UserContextHolder;
 import com.backend.springapp.service.ResolutionProofService;
 import com.backend.springapp.service.S3StorageService;
 
@@ -39,7 +34,7 @@ import com.backend.springapp.service.S3StorageService;
  * 
  * DESIGN:
  * - Thin controller - all business logic in ResolutionProofService
- * - Uses header-based auth (will migrate to JWT later)
+ * - Uses JWT authentication via UserContextHolder
  * - Clear separation from state transition endpoints
  * 
  * DOMAIN RULE ENFORCED:
@@ -53,16 +48,24 @@ public class ResolutionProofController {
     private static final Logger log = LoggerFactory.getLogger(ResolutionProofController.class);
     
     private final ResolutionProofService resolutionProofService;
-    private final UserRepository userRepository;
     private final S3StorageService s3StorageService;
     
     public ResolutionProofController(
             ResolutionProofService resolutionProofService,
-            UserRepository userRepository,
             S3StorageService s3StorageService) {
         this.resolutionProofService = resolutionProofService;
-        this.userRepository = userRepository;
         this.s3StorageService = s3StorageService;
+    }
+    
+    /**
+     * Get current user context from JWT.
+     */
+    private UserContext getCurrentUserContext() {
+        UserContext context = UserContextHolder.getContext();
+        if (context == null) {
+            throw new SecurityException("User not authenticated");
+        }
+        return context;
     }
     
     /**
@@ -83,15 +86,10 @@ public class ResolutionProofController {
     public ResponseEntity<ResolutionProofResponse> submitProof(
             @PathVariable Long complaintId,
             @RequestPart(value = "image", required = false) MultipartFile imageFile,
-            @RequestParam(value = "description", required = true) String description,
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @RequestParam(value = "description", required = true) String description) {
         
-        log.info("Resolution proof submission: complaint={}, user={}", complaintId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
+        log.info("Resolution proof submission: complaint={}, user={}", complaintId, userContext.userId());
         
         // Upload image to S3 if provided
         String s3Key = null;
@@ -149,15 +147,10 @@ public class ResolutionProofController {
     @PutMapping("/{complaintId}/resolution-proof/{proofId}/verify")
     public ResponseEntity<ResolutionProofResponse> verifyProof(
             @PathVariable Long complaintId,
-            @PathVariable Long proofId,
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @PathVariable Long proofId) {
         
-        log.info("Resolution proof verification: proof={}, by={}", proofId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
+        log.info("Resolution proof verification: proof={}, by={}", proofId, userContext.userId());
         
         ResolutionProofResponse response = resolutionProofService.verifyProof(proofId, userContext);
         
@@ -174,47 +167,5 @@ public class ResolutionProofController {
     @GetMapping("/{complaintId}/has-proof")
     public ResponseEntity<Boolean> hasProof(@PathVariable Long complaintId) {
         return ResponseEntity.ok(resolutionProofService.hasProof(complaintId));
-    }
-    
-    // ==================== HELPER METHODS ====================
-    
-    /**
-     * Resolve UserContext from request headers or database.
-     */
-    private UserContext resolveUserContext(
-            Long userId, 
-            String userRole, 
-            UserType userType,
-            Long departmentId) {
-        
-        // If we have a user ID, fetch from database for accurate role/dept
-        if (userId != null) {
-            User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-            
-            UserRole role = UserRole.fromUserType(user.getUserType());
-            return new UserContext(userId, role, user.getDeptId());
-        }
-        
-        // Fallback to headers
-        UserRole role = resolveRole(userRole, userType);
-        return new UserContext(userId, role, departmentId);
-    }
-    
-    private UserRole resolveRole(String userRole, UserType userType) {
-        if (userRole != null && !userRole.isEmpty()) {
-            try {
-                return UserRole.valueOf(userRole.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid user role from header: {}", userRole);
-            }
-        }
-        
-        if (userType != null) {
-            return UserRole.fromUserType(userType);
-        }
-        
-        log.warn("No user role provided, defaulting to CITIZEN");
-        return UserRole.CITIZEN;
     }
 }

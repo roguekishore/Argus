@@ -4,6 +4,7 @@ import com.backend.springapp.dto.request.UserRequestDTO;
 import com.backend.springapp.dto.response.UserResponseDTO;
 import com.backend.springapp.model.User;
 import com.backend.springapp.repository.UserRepository;
+import com.backend.springapp.security.JwtService;
 import com.backend.springapp.service.UserService;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,14 +20,12 @@ import java.util.Optional;
 /**
  * Authentication Controller for login and registration.
  * 
- * CURRENT: Simple authentication (no JWT)
- * - Login validates credentials and returns user data
- * - Register creates user and returns success message
- * 
- * FUTURE: JWT Authentication
+ * PRODUCTION JWT Authentication:
  * - Login returns { token, refreshToken, user }
- * - Add /refresh endpoint for token refresh
- * - Add /me endpoint for token validation
+ * - /refresh endpoint for token refresh
+ * - /me endpoint for token validation
+ * 
+ * Uses standard Authorization: Bearer header (CloudFront compatible)
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -38,11 +37,14 @@ public class AuthController {
     @Autowired
     private UserService userService;
     
+    @Autowired
+    private JwtService jwtService;
+    
     /**
-     * Login endpoint - validates credentials and returns user data
+     * Login endpoint - validates credentials and returns JWT tokens
      * 
      * Request: { "email": "...", "password": "..." }
-     * Response: { "userId": 12, "role": "STAFF", "departmentId": 3, ... }
+     * Response: { "token": "...", "refreshToken": "...", "userId": 12, "role": "STAFF", ... }
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
@@ -74,20 +76,128 @@ public class AuthController {
             ));
         }
         
-        // Build response with user data
+        // Generate JWT tokens
+        String token = jwtService.generateToken(
+            user.getUserId(), 
+            user.getUserType().name(), 
+            user.getDeptId()
+        );
+        String refreshToken = jwtService.generateRefreshToken(user.getUserId());
+        
+        // Build response with tokens and user data
         Map<String, Object> response = new HashMap<>();
+        response.put("token", token);
+        response.put("refreshToken", refreshToken);
         response.put("userId", user.getUserId());
         response.put("role", user.getUserType().name());
         response.put("email", user.getEmail());
         response.put("name", user.getName());
         response.put("phone", user.getMobile());
         
-        // Include departmentId if user has one (use deptId field directly)
+        // Include departmentId if user has one
         if (user.getDeptId() != null) {
             response.put("departmentId", user.getDeptId());
         }
         
         return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Refresh token endpoint - get new access token using refresh token
+     * 
+     * Request: { "refreshToken": "..." }
+     * Response: { "token": "...", "refreshToken": "..." }
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@RequestBody Map<String, String> request) {
+        String refreshToken = request.get("refreshToken");
+        
+        if (refreshToken == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Refresh token is required"
+            ));
+        }
+        
+        try {
+            // Validate refresh token and extract user ID
+            Long userId = jwtService.extractUserId(refreshToken);
+            
+            // Fetch user to get current role/department (in case they changed)
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "User not found"
+                ));
+            }
+            
+            User user = userOpt.get();
+            
+            // Generate new tokens
+            String newToken = jwtService.generateToken(
+                user.getUserId(), 
+                user.getUserType().name(), 
+                user.getDeptId()
+            );
+            String newRefreshToken = jwtService.generateRefreshToken(user.getUserId());
+            
+            return ResponseEntity.ok(Map.of(
+                "token", newToken,
+                "refreshToken", newRefreshToken
+            ));
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Invalid or expired refresh token"
+            ));
+        }
+    }
+    
+    /**
+     * Get current user info (validates token)
+     * 
+     * Authorization: Bearer <token>
+     * Response: { "userId": 12, "role": "STAFF", ... }
+     */
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(@RequestHeader("Authorization") String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "No token provided"
+            ));
+        }
+        
+        String token = authHeader.substring(7);
+        
+        try {
+            Long userId = jwtService.extractUserId(token);
+            
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "User not found"
+                ));
+            }
+            
+            User user = userOpt.get();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("userId", user.getUserId());
+            response.put("role", user.getUserType().name());
+            response.put("email", user.getEmail());
+            response.put("name", user.getName());
+            response.put("phone", user.getMobile());
+            
+            if (user.getDeptId() != null) {
+                response.put("departmentId", user.getDeptId());
+            }
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Invalid or expired token"
+            ));
+        }
     }
     
     /**

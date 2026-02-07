@@ -3,14 +3,11 @@
  * 
  * ARCHITECTURE NOTES:
  * - Centralized HTTP client with interceptors
- * - Auth token handling abstracted (ready for JWT)
+ * - JWT token handling with automatic refresh
  * - Error handling standardized
  * - Request/response logging in development
  * 
- * JWT MIGRATION PATH:
- * 1. Update getAuthHeaders() to read JWT from storage
- * 2. Add token refresh logic in response interceptor
- * 3. No changes needed in service files
+ * Uses standard Authorization: Bearer header (CloudFront compatible)
  */
 
 // Base API URL - should come from environment variable
@@ -18,12 +15,11 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api
 
 /**
  * Storage keys for auth data
- * When JWT is implemented, token will be stored here
  */
 export const AUTH_STORAGE_KEYS = {
   USER_DATA: 'grievance_user',
-  AUTH_TOKEN: 'grievance_token', // Reserved for JWT
-  REFRESH_TOKEN: 'grievance_refresh', // Reserved for JWT refresh
+  AUTH_TOKEN: 'grievance_token',
+  REFRESH_TOKEN: 'grievance_refresh',
 };
 
 /**
@@ -40,11 +36,41 @@ export const getStoredUser = () => {
 };
 
 /**
+ * Get stored auth token
+ * @returns {string|null}
+ */
+export const getStoredToken = () => {
+  return localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
+};
+
+/**
+ * Get stored refresh token
+ * @returns {string|null}
+ */
+export const getStoredRefreshToken = () => {
+  return localStorage.getItem(AUTH_STORAGE_KEYS.REFRESH_TOKEN);
+};
+
+/**
  * Store user data
  * @param {Object} userData 
  */
 export const storeUser = (userData) => {
   localStorage.setItem(AUTH_STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
+};
+
+/**
+ * Store auth tokens
+ * @param {string} token 
+ * @param {string} refreshToken 
+ */
+export const storeTokens = (token, refreshToken) => {
+  if (token) {
+    localStorage.setItem(AUTH_STORAGE_KEYS.AUTH_TOKEN, token);
+  }
+  if (refreshToken) {
+    localStorage.setItem(AUTH_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  }
 };
 
 /**
@@ -59,8 +85,7 @@ export const clearAuthData = () => {
 /**
  * Get auth headers for requests
  * 
- * CURRENT: Returns user ID for simple auth
- * FUTURE (JWT): Will return Bearer token
+ * Uses standard Authorization: Bearer header (CloudFront compatible)
  * 
  * @returns {Object} Headers object
  */
@@ -69,21 +94,10 @@ const getAuthHeaders = () => {
     'Content-Type': 'application/json',
   };
 
-  // FUTURE JWT IMPLEMENTATION:
-  // const token = localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
-  // if (token) {
-  //   headers['Authorization'] = `Bearer ${token}`;
-  // }
-
-  // CURRENT: Simple auth - include user context in header if needed
-  const user = getStoredUser();
-  if (user) {
-    // Custom header for backend to identify user (temporary until JWT)
-    headers['X-User-Id'] = user.userId;
-    headers['X-User-Role'] = user.role;
-    if (user.departmentId) {
-      headers['X-Department-Id'] = user.departmentId;
-    }
+  // JWT Authentication - standard Bearer token
+  const token = getStoredToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   return headers;
@@ -277,14 +291,10 @@ const apiClient = {
     const url = `${API_BASE_URL}${endpoint}`;
     
     // Get auth headers but remove Content-Type (browser sets it for FormData)
-    const user = getStoredUser();
     const headers = {};
-    if (user) {
-      headers['X-User-Id'] = user.userId;
-      headers['X-User-Role'] = user.role;
-      if (user.departmentId) {
-        headers['X-Department-Id'] = user.departmentId;
-      }
+    const token = getStoredToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     logRequest('POST (FormData)', url, '[FormData]');

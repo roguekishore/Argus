@@ -3,13 +3,8 @@ package com.backend.springapp.controller;
 import com.backend.springapp.dto.request.StateTransitionRequest;
 import com.backend.springapp.dto.response.AvailableTransitionsResponse;
 import com.backend.springapp.dto.response.StateTransitionResponse;
-import com.backend.springapp.enums.ComplaintStatus;
-import com.backend.springapp.enums.UserType;
-import com.backend.springapp.exception.ResourceNotFoundException;
-import com.backend.springapp.model.User;
-import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.security.UserContext;
-import com.backend.springapp.security.UserRole;
+import com.backend.springapp.security.UserContextHolder;
 import com.backend.springapp.service.ComplaintStateService;
 
 import jakarta.validation.Valid;
@@ -25,15 +20,12 @@ import org.springframework.web.bind.annotation.*;
  * DESIGN PRINCIPLES:
  * - Controllers are THIN - no business logic
  * - All work delegated to ComplaintStateService
- * - User context resolved here (will be from JWT later)
+ * - User context extracted from JWT via UserContextHolder
  * - Provides both generic and semantic endpoints for flexibility
  * 
- * AUTHENTICATION NOTE (IMPORTANT):
- * Currently uses header-based mock authentication.
- * When migrating to JWT/Spring Security:
- * 1. Remove the header parsing code
- * 2. Extract UserContext from SecurityContextHolder
- * 3. NO changes needed in services or state machine
+ * AUTHENTICATION:
+ * Uses JWT authentication. JwtAuthenticationFilter extracts user info
+ * from Bearer token and populates UserContextHolder.
  * 
  * ENDPOINTS:
  * - PUT  /api/complaints/{id}/state              - Generic state transition
@@ -50,13 +42,20 @@ public class ComplaintStateController {
     private static final Logger log = LoggerFactory.getLogger(ComplaintStateController.class);
     
     private final ComplaintStateService complaintStateService;
-    private final UserRepository userRepository;
     
-    public ComplaintStateController(
-            ComplaintStateService complaintStateService,
-            UserRepository userRepository) {
+    public ComplaintStateController(ComplaintStateService complaintStateService) {
         this.complaintStateService = complaintStateService;
-        this.userRepository = userRepository;
+    }
+    
+    /**
+     * Get current user context from JWT.
+     */
+    private UserContext getCurrentUserContext() {
+        UserContext context = UserContextHolder.getContext();
+        if (context == null) {
+            throw new SecurityException("User not authenticated");
+        }
+        return context;
     }
     
     // ==================== GENERIC STATE TRANSITION ====================
@@ -69,29 +68,20 @@ public class ComplaintStateController {
      * 
      * PUT /api/complaints/{complaintId}/state
      * Body: { "targetState": "RESOLVED" }
-     * Headers: X-User-Id, X-User-Role (or X-User-Type), X-Department-Id
+     * Authorization: Bearer token required
      * 
      * @param complaintId The complaint to transition
      * @param request     Contains the target state
-     * @param userId      Mock header for user ID (will be from JWT later)
-     * @param userRole    Mock header for user role (will be from JWT later)
-     * @param userType    Alternative header using UserType enum
-     * @param departmentId Mock header for department ID (will be from JWT later)
      * @return State transition response with details
      */
     @PutMapping("/{complaintId}/state")
     public ResponseEntity<StateTransitionResponse> transitionState(
             @PathVariable Long complaintId,
-            @Valid @RequestBody StateTransitionRequest request,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @Valid @RequestBody StateTransitionRequest request) {
         
+        UserContext userContext = getCurrentUserContext();
         log.debug("State transition request: complaint={}, target={}, userId={}",
-            complaintId, request.targetState(), userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+            complaintId, request.targetState(), userContext.userId());
         
         StateTransitionResponse response = complaintStateService.transitionState(
             complaintId,
@@ -111,20 +101,16 @@ public class ComplaintStateController {
      * Returns only transitions the current user is authorized to perform.
      * 
      * GET /api/complaints/{complaintId}/allowed-transitions
-     * Headers: X-User-Id, X-User-Role (or X-User-Type), X-Department-Id
+     * Authorization: Bearer token required
      * 
      * @param complaintId The complaint to check
      * @return Available transitions response
      */
     @GetMapping("/{complaintId}/allowed-transitions")
     public ResponseEntity<AvailableTransitionsResponse> getAvailableTransitions(
-            @PathVariable Long complaintId,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @PathVariable Long complaintId) {
         
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
         
         var stateInfo = complaintStateService.getComplaintStateInfo(complaintId, userContext);
         
@@ -145,16 +131,11 @@ public class ComplaintStateController {
      * PUT /api/complaints/{complaintId}/start
      */
     @PutMapping("/{complaintId}/start")
-    public ResponseEntity<StateTransitionResponse> startWork(
-            @PathVariable Long complaintId,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+    public ResponseEntity<StateTransitionResponse> startWork(@PathVariable Long complaintId) {
         
         log.debug("Start work request: complaint={}", complaintId);
         
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
         
         StateTransitionResponse response = complaintStateService.startWork(complaintId, userContext);
         
@@ -170,16 +151,10 @@ public class ComplaintStateController {
      * PUT /api/complaints/{complaintId}/resolve
      */
     @PutMapping("/{complaintId}/resolve")
-    public ResponseEntity<StateTransitionResponse> resolveComplaint(
-            @PathVariable Long complaintId,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+    public ResponseEntity<StateTransitionResponse> resolveComplaint(@PathVariable Long complaintId) {
         
-        log.debug("Resolve request: complaint={}, userId={}", complaintId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
+        log.debug("Resolve request: complaint={}, userId={}", complaintId, userContext.userId());
         
         StateTransitionResponse response = complaintStateService.resolve(complaintId, userContext);
         
@@ -195,16 +170,10 @@ public class ComplaintStateController {
      * PUT /api/complaints/{complaintId}/close
      */
     @PutMapping("/{complaintId}/close")
-    public ResponseEntity<StateTransitionResponse> closeComplaint(
-            @PathVariable Long complaintId,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+    public ResponseEntity<StateTransitionResponse> closeComplaint(@PathVariable Long complaintId) {
         
-        log.debug("Close request: complaint={}, userId={}", complaintId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
+        log.debug("Close request: complaint={}, userId={}", complaintId, userContext.userId());
         
         StateTransitionResponse response = complaintStateService.close(complaintId, userContext);
         
@@ -220,16 +189,10 @@ public class ComplaintStateController {
      * PUT /api/complaints/{complaintId}/cancel
      */
     @PutMapping("/{complaintId}/cancel")
-    public ResponseEntity<StateTransitionResponse> cancelComplaint(
-            @PathVariable Long complaintId,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+    public ResponseEntity<StateTransitionResponse> cancelComplaint(@PathVariable Long complaintId) {
         
-        log.debug("Cancel request: complaint={}, userId={}", complaintId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        UserContext userContext = getCurrentUserContext();
+        log.debug("Cancel request: complaint={}, userId={}", complaintId, userContext.userId());
         
         StateTransitionResponse response = complaintStateService.cancel(complaintId, userContext);
         
@@ -278,82 +241,5 @@ public class ComplaintStateController {
         StateTransitionResponse response = complaintStateService.close(complaintId, systemContext);
         
         return ResponseEntity.ok(response);
-    }
-    
-    // ==================== HELPER METHODS ====================
-    
-    /**
-     * Resolve UserContext from request headers or database.
-     * 
-     * MIGRATION NOTE:
-     * When switching to JWT/Spring Security, replace this method with:
-     * 
-     *   Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-     *   // Extract UserContext from JWT claims or Principal
-     * 
-     * This is the ONLY place that needs to change for auth migration.
-     * 
-     * @param userId       From X-User-Id header
-     * @param userRole     From X-User-Role header (string like "STAFF", "CITIZEN")
-     * @param userType     From X-User-Type header (UserType enum)
-     * @param departmentId From X-Department-Id header
-     * @return UserContext for the current request
-     */
-    private UserContext resolveUserContext(
-            Long userId, 
-            String userRole, 
-            UserType userType,
-            Long departmentId) {
-        
-        // Priority 1: If X-User-Role is "SYSTEM", create system context
-        if ("SYSTEM".equalsIgnoreCase(userRole)) {
-            return UserContext.system();
-        }
-        
-        // Priority 2: If we have a user ID, fetch from database
-        if (userId != null) {
-            return resolveFromDatabase(userId);
-        }
-        
-        // Priority 3: Use headers directly
-        UserRole role = resolveRole(userRole, userType);
-        
-        return new UserContext(userId, role, departmentId);
-    }
-    
-    /**
-     * Resolve UserContext by fetching user from database.
-     * This ensures we get accurate role and department information.
-     */
-    private UserContext resolveFromDatabase(Long userId) {
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        
-        UserRole role = UserRole.fromUserType(user.getUserType());
-        
-        return new UserContext(userId, role, user.getDeptId());
-    }
-    
-    /**
-     * Resolve UserRole from header values.
-     */
-    private UserRole resolveRole(String userRole, UserType userType) {
-        // Try string role first
-        if (userRole != null && !userRole.isEmpty()) {
-            try {
-                return UserRole.valueOf(userRole.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid user role from header: {}", userRole);
-            }
-        }
-        
-        // Try UserType enum
-        if (userType != null) {
-            return UserRole.fromUserType(userType);
-        }
-        
-        // Default - should not happen in production
-        log.warn("No user role provided in request headers, defaulting to CITIZEN");
-        return UserRole.CITIZEN;
     }
 }

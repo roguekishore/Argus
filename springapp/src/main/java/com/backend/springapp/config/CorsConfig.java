@@ -1,14 +1,14 @@
 package com.backend.springapp.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * Global CORS configuration for the application.
@@ -23,46 +23,47 @@ import java.util.List;
  * - Backend runs at: https://api.yourdomain.com
  * - Frontend runs at: https://yourdomain.com or https://www.yourdomain.com
  * - Set CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+ * 
+ * IMPORTANT: This filter runs FIRST (highest precedence) to handle 
+ * preflight OPTIONS requests before any authentication filters.
  */
 @Configuration
 public class CorsConfig {
 
-    @Value("${cors.allowed-origins}")
-    private String allowedOrigins;
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(corsFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.addUrlPatterns("/*");
+        return registration;
+    }
 
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         
-        // Parse comma-separated origins from environment
-        List<String> origins = Arrays.asList(allowedOrigins.split(","));
-        config.setAllowedOrigins(origins);
+        // Allow ALL origins (for development/demo purposes)
+        config.addAllowedOriginPattern("*");
         
-        System.out.println("✓ CORS enabled for origins: " + origins);
+        System.out.println("✓ CORS enabled for ALL origins (*)");
         
         // Allow all common HTTP methods
         config.setAllowedMethods(Arrays.asList(
             "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"
         ));
         
-        // Allow all headers (including custom auth headers)
+        // Allow all headers (including Authorization for JWT)
         config.setAllowedHeaders(Arrays.asList(
             "Authorization",
             "Content-Type",
             "Accept",
             "Origin",
-            "X-Requested-With",
-            "X-User-Id",
-            "X-User-Role",
-            "X-Department-Id"
+            "X-Requested-With"
         ));
         
         // Expose headers that frontend might need to read
         config.setExposedHeaders(Arrays.asList(
-            "Authorization",
-            "X-User-Id",
-            "X-User-Role",
-            "X-Department-Id"
+            "Authorization"
         ));
         
         // Allow credentials (cookies, authorization headers)

@@ -2,54 +2,31 @@
  * Authentication Service
  * 
  * ARCHITECTURE NOTES:
- * - Abstracts authentication mechanism from the rest of the app
- * - Current: Simple email/password auth without JWT
- * - Future: JWT-based auth with token refresh
- * 
- * JWT MIGRATION PATH:
- * 1. Update login() to store JWT token
- * 2. Add extractUserFromToken() to decode JWT
- * 3. Add refreshToken() method
- * 4. Update logout() to invalidate token on server
- * 5. No changes needed in UserContext or components
- * 
- * CURRENT BACKEND RESPONSE FORMAT:
- * {
- *   "userId": 12,
- *   "role": "STAFF",
- *   "departmentId": 3
- * }
+ * - JWT-based authentication
+ * - Uses standard Authorization: Bearer header (CloudFront compatible)
+ * - Automatic token refresh
+ * - Token stored in localStorage
  */
 
-import apiClient, { storeUser, clearAuthData, getStoredUser, AUTH_STORAGE_KEYS } from './api/apiClient';
+import apiClient, { storeUser, storeTokens, clearAuthData, getStoredUser, getStoredRefreshToken, AUTH_STORAGE_KEYS } from './api/apiClient';
 
 /**
  * API endpoints for authentication
- * Adjust these to match your Spring Boot endpoints
  */
 const AUTH_ENDPOINTS = {
-  LOGIN: '/auth/login',       // POST - { email, password } → { userId, role, departmentId }
-  REGISTER: '/auth/register', // POST - { name, email, phone, password } → { message } or user data
-  LOGOUT: '/auth/logout',     // POST (optional for simple auth)
-  // FUTURE JWT ENDPOINTS:
-  // REFRESH: '/auth/refresh', // POST - { refreshToken } → { token, refreshToken }
-  // ME: '/auth/me',           // GET → user data (validated by token)
+  LOGIN: '/auth/login',       // POST - { email, password } → { token, refreshToken, user }
+  REGISTER: '/auth/register', // POST - { name, email, phone, password } → { message }
+  LOGOUT: '/auth/logout',     // POST (optional)
+  REFRESH: '/auth/refresh',   // POST - { refreshToken } → { token, refreshToken }
+  ME: '/auth/me',             // GET → user data (validated by token)
 };
 
 const authService = {
   /**
    * Login user with email/phone and password
    * 
-   * CURRENT IMPLEMENTATION (Simple Auth):
-   * - Backend validates credentials
-   * - Returns: { userId, role, departmentId }
-   * - We store this in localStorage
-   * - UserContext is populated from this data
-   * 
-   * FUTURE JWT IMPLEMENTATION:
-   * - Backend returns: { token, refreshToken, user: {...} }
-   * - We store tokens + extract user from JWT payload
-   * - Same interface to components
+   * Backend returns: { token, refreshToken, userId, role, departmentId, ... }
+   * We store tokens and user data in localStorage
    * 
    * @param {Object} credentials
    * @param {string} credentials.email - Email or phone
@@ -62,8 +39,10 @@ const authService = {
       const response = await apiClient.post(AUTH_ENDPOINTS.LOGIN, credentials);
       
       /**
-       * CURRENT: Backend returns user data directly
+       * Backend returns:
        * {
+       *   "token": "eyJ...",
+       *   "refreshToken": "eyJ...",
        *   "userId": 12,
        *   "role": "STAFF",
        *   "departmentId": 3
@@ -71,18 +50,11 @@ const authService = {
        */
       const userData = authService.extractUserData(response);
       
-      // Store in localStorage for session persistence
-      storeUser(userData);
+      // Store JWT tokens
+      storeTokens(response.token, response.refreshToken);
       
-      /**
-       * FUTURE JWT: Store tokens
-       * if (response.token) {
-       *   localStorage.setItem(AUTH_STORAGE_KEYS.AUTH_TOKEN, response.token);
-       * }
-       * if (response.refreshToken) {
-       *   localStorage.setItem(AUTH_STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
-       * }
-       */
+      // Store user data in localStorage for session persistence
+      storeUser(userData);
       
       return userData;
     } catch (error) {
@@ -101,10 +73,6 @@ const authService = {
    * Register a new citizen user
    * 
    * NOTE: Signup does NOT auto-login. User must login after registration.
-   * This is intentional for:
-   * - Email verification flows (future)
-   * - Audit/compliance requirements
-   * - JWT migration (login will return token)
    * 
    * @param {Object} userData
    * @param {string} userData.name
@@ -139,13 +107,13 @@ const authService = {
 
   /**
    * Logout current user
-   * Clears local storage and optionally calls server
+   * Clears local storage tokens
    * 
    * @returns {Promise<void>}
    */
   logout: async () => {
     try {
-      // FUTURE: Invalidate token on server
+      // Optional: Invalidate token on server (not required for stateless JWT)
       // await apiClient.post(AUTH_ENDPOINTS.LOGOUT);
     } catch (error) {
       // Continue with local logout even if server call fails
@@ -163,11 +131,19 @@ const authService = {
    */
   isAuthenticated: () => {
     const user = getStoredUser();
-    return !!user && !!user.userId;
+    const token = localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
     
-    // FUTURE JWT: Also check token validity
-    // const token = localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
-    // return !!token && !isTokenExpired(token);
+    // Check both user data and valid token exist
+    if (!user || !user.userId || !token) {
+      return false;
+    }
+    
+    // Check if token is expired
+    if (authService.isTokenExpired(token)) {
+      return false;
+    }
+    
+    return true;
   },
 
   /**
@@ -201,38 +177,56 @@ const authService = {
   },
 
   /**
-   * FUTURE: Refresh authentication token
+   * Refresh authentication token using refresh token
    * 
    * @returns {Promise<string>} New access token
    */
   refreshToken: async () => {
-    // FUTURE IMPLEMENTATION:
-    // const refreshToken = localStorage.getItem(AUTH_STORAGE_KEYS.REFRESH_TOKEN);
-    // if (!refreshToken) throw new Error('No refresh token');
-    // 
-    // const response = await apiClient.post(AUTH_ENDPOINTS.REFRESH, { refreshToken });
-    // localStorage.setItem(AUTH_STORAGE_KEYS.AUTH_TOKEN, response.token);
-    // return response.token;
+    const refreshToken = getStoredRefreshToken();
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
     
-    throw new Error('Token refresh not implemented');
+    try {
+      // Direct fetch to avoid circular dependency with apiClient
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}${AUTH_ENDPOINTS.REFRESH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Token refresh failed');
+      }
+      
+      const data = await response.json();
+      storeTokens(data.token, data.refreshToken);
+      return data.token;
+    } catch (error) {
+      // Clear auth data if refresh fails
+      clearAuthData();
+      throw error;
+    }
   },
 
   /**
-   * FUTURE: Check if JWT token is expired
+   * Check if JWT token is expired
    * 
    * @param {string} token - JWT token
    * @returns {boolean}
    */
   isTokenExpired: (token) => {
-    // FUTURE IMPLEMENTATION:
-    // try {
-    //   const payload = JSON.parse(atob(token.split('.')[1]));
-    //   return payload.exp * 1000 < Date.now();
-    // } catch {
-    //   return true;
-    // }
+    if (!token) return true;
     
-    return false;
+    try {
+      // Decode JWT payload (base64)
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      // exp is in seconds, Date.now() is in milliseconds
+      // Add 30 second buffer to refresh before actual expiry
+      return (payload.exp * 1000) < (Date.now() + 30000);
+    } catch {
+      return true;
+    }
   },
 
   /**
@@ -243,14 +237,18 @@ const authService = {
    */
   initializeAuth: () => {
     const user = getStoredUser();
+    const token = localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
     
-    // FUTURE: Validate token is not expired
-    // const token = localStorage.getItem(AUTH_STORAGE_KEYS.AUTH_TOKEN);
-    // if (token && authService.isTokenExpired(token)) {
-    //   // Try to refresh or logout
-    //   clearAuthData();
-    //   return null;
-    // }
+    // Validate token is not expired
+    if (token && authService.isTokenExpired(token)) {
+      // Token expired - try to refresh or clear
+      const refreshToken = getStoredRefreshToken();
+      if (!refreshToken) {
+        clearAuthData();
+        return null;
+      }
+      // Let the app handle refresh on first API call
+    }
     
     return user;
   },

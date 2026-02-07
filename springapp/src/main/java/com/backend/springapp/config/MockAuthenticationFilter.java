@@ -13,46 +13,35 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
 /**
- * Mock authentication filter for development and testing.
+ * Mock authentication filter for LOCAL DEVELOPMENT and testing ONLY.
  * 
- * DESIGN INTENT:
- * - Extracts user context from HTTP headers
- * - Populates UserContextHolder for thread-local access
- * - Clears context after request processing
+ * DISABLED BY DEFAULT in production (jwt.enabled=true disables this filter).
+ * Enable by setting jwt.enabled=false for local development testing.
  * 
- * MIGRATION TO JWT/SPRING SECURITY:
- * When adding real authentication:
- * 1. Remove this filter
- * 2. Create a JwtAuthenticationFilter that:
- *    - Validates JWT token
- *    - Extracts claims (userId, role, departmentId)
- *    - Creates UserContext and sets in UserContextHolder
- * 3. Configure Spring Security filter chain
- * 
- * No changes needed in controllers, services, or business logic.
- * 
- * HEADERS EXPECTED:
- * - X-User-Id: User's database ID
- * - X-User-Role: Role name (CITIZEN, STAFF, DEPT_HEAD, ADMIN, SYSTEM, etc.)
- * - X-User-Type: UserType enum value (alternative to X-User-Role)
- * - X-Department-Id: User's department ID (for STAFF, DEPT_HEAD)
+ * Uses custom headers (X-User-Id, X-User-Role) which work locally but NOT with CloudFront.
+ * For production deployment, use JwtAuthenticationFilter instead.
  */
 @Component
-@Order(1)
+@Order(3)  // Runs AFTER JwtAuthenticationFilter (order 2)
 public class MockAuthenticationFilter implements Filter {
     
     private static final Logger log = LoggerFactory.getLogger(MockAuthenticationFilter.class);
     
     private final UserRepository userRepository;
+    
+    @Value("${jwt.enabled:true}")
+    private boolean jwtEnabled;
     
     public MockAuthenticationFilter(UserRepository userRepository) {
         this.userRepository = userRepository;
@@ -62,15 +51,33 @@ public class MockAuthenticationFilter implements Filter {
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         
+        // SKIP this filter if JWT is enabled (production mode)
+        if (jwtEnabled) {
+            chain.doFilter(request, response);
+            return;
+        }
+        
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         
+        // Skip OPTIONS preflight requests - they're handled by CorsFilter
+        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+            chain.doFilter(request, response);
+            return;
+        }
+        
+        // Only use mock auth if JWT filter hasn't already set context
+        if (UserContextHolder.getContext() != null) {
+            chain.doFilter(request, response);
+            return;
+        }
+        
         try {
-            // Extract user context from headers
+            // Extract user context from headers (development only)
             UserContext userContext = extractUserContext(httpRequest);
             
             if (userContext != null) {
                 UserContextHolder.setContext(userContext);
-                log.debug("UserContext set for request: {}", userContext);
+                log.debug("MockAuth: UserContext set for request: {}", userContext);
             }
             
             chain.doFilter(request, response);
