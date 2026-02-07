@@ -9,18 +9,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.backend.springapp.security.UserContext;
+import com.backend.springapp.security.UserContextHolder;
+
 /**
  * REST API for user notifications.
  * 
- * SECURITY NOTE:
- * All endpoints require authentication (when JWT is implemented).
+ * SECURITY:
+ * All endpoints require authentication via JWT.
+ * User context is extracted from the token by JwtAuthenticationFilter.
  * Users can only access their own notifications.
- * Currently uses X-User-Id header for user identification (temporary).
  * 
  * API DESIGN:
  * - GET endpoints for fetching notifications
@@ -39,6 +41,17 @@ public class NotificationController {
     public NotificationController(NotificationService notificationService) {
         this.notificationService = notificationService;
     }
+    
+    /**
+     * Get current user ID from JWT context.
+     */
+    private Long getCurrentUserId() {
+        UserContext context = UserContextHolder.getContext();
+        if (context == null) {
+            throw new SecurityException("User not authenticated");
+        }
+        return context.userId();
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // READ ENDPOINTS
@@ -52,15 +65,14 @@ public class NotificationController {
      * Optional query params:
      * - unreadOnly=true: Return only unread notifications
      * 
-     * @param userId     User ID from header (temporary until JWT)
      * @param unreadOnly If true, return only unread notifications
      * @return List of notifications, most recent first
      */
     @GetMapping
     public ResponseEntity<List<NotificationDTO>> getNotifications(
-            @RequestHeader("X-User-Id") Long userId,
             @RequestParam(required = false, defaultValue = "false") boolean unreadOnly) {
         
+        Long userId = getCurrentUserId();
         log.debug("Fetching notifications for user {}, unreadOnly={}", userId, unreadOnly);
 
         List<Notification> notifications;
@@ -82,13 +94,11 @@ public class NotificationController {
      * 
      * GET /api/notifications/count
      * 
-     * @param userId User ID from header
      * @return Count of unread notifications
      */
     @GetMapping("/count")
-    public ResponseEntity<UnreadCountResponse> getUnreadCount(
-            @RequestHeader("X-User-Id") Long userId) {
-        
+    public ResponseEntity<UnreadCountResponse> getUnreadCount() {
+        Long userId = getCurrentUserId();
         long count = notificationService.getUnreadCount(userId);
         return ResponseEntity.ok(new UnreadCountResponse(count));
     }
@@ -98,15 +108,14 @@ public class NotificationController {
      * 
      * GET /api/notifications/complaint/{complaintId}
      * 
-     * @param userId      User ID from header
      * @param complaintId The complaint ID
      * @return List of notifications for this complaint
      */
     @GetMapping("/complaint/{complaintId}")
     public ResponseEntity<List<NotificationDTO>> getNotificationsForComplaint(
-            @RequestHeader("X-User-Id") Long userId,
             @PathVariable Long complaintId) {
         
+        Long userId = getCurrentUserId();
         log.debug("Fetching notifications for user {} and complaint {}", userId, complaintId);
 
         List<Notification> notifications = notificationService.getForComplaint(userId, complaintId);
@@ -127,15 +136,14 @@ public class NotificationController {
      * 
      * PUT /api/notifications/{id}/read
      * 
-     * @param userId         User ID from header
      * @param notificationId The notification ID
      * @return Updated notification
      */
     @PutMapping("/{id}/read")
     public ResponseEntity<NotificationDTO> markAsRead(
-            @RequestHeader("X-User-Id") Long userId,
             @PathVariable("id") Long notificationId) {
         
+        Long userId = getCurrentUserId();
         log.debug("Marking notification {} as read for user {}", notificationId, userId);
 
         try {
@@ -151,13 +159,11 @@ public class NotificationController {
      * 
      * PUT /api/notifications/read-all
      * 
-     * @param userId User ID from header
      * @return Count of notifications marked as read
      */
     @PutMapping("/read-all")
-    public ResponseEntity<MarkReadResponse> markAllAsRead(
-            @RequestHeader("X-User-Id") Long userId) {
-        
+    public ResponseEntity<MarkReadResponse> markAllAsRead() {
+        Long userId = getCurrentUserId();
         log.debug("Marking all notifications as read for user {}", userId);
 
         int count = notificationService.markAllAsRead(userId);
@@ -171,15 +177,14 @@ public class NotificationController {
      * 
      * Called when user views a complaint detail page.
      * 
-     * @param userId      User ID from header
      * @param complaintId The complaint ID
      * @return Count of notifications marked as read
      */
     @PutMapping("/complaint/{complaintId}/read-all")
     public ResponseEntity<MarkReadResponse> markComplaintNotificationsAsRead(
-            @RequestHeader("X-User-Id") Long userId,
             @PathVariable Long complaintId) {
         
+        Long userId = getCurrentUserId();
         log.debug("Marking complaint {} notifications as read for user {}", complaintId, userId);
 
         int count = notificationService.markComplaintNotificationsAsRead(userId, complaintId);

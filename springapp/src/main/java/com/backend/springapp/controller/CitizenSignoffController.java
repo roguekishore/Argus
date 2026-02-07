@@ -10,18 +10,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.springapp.dto.request.CitizenSignoffRequest;
 import com.backend.springapp.dto.response.CitizenSignoffResponse;
-import com.backend.springapp.enums.UserType;
-import com.backend.springapp.exception.ResourceNotFoundException;
-import com.backend.springapp.model.User;
-import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.security.UserContext;
-import com.backend.springapp.security.UserRole;
+import com.backend.springapp.security.UserContextHolder;
 import com.backend.springapp.service.CitizenSignoffService;
 
 import jakarta.validation.Valid;
@@ -35,7 +30,7 @@ import jakarta.validation.Valid;
  * 
  * DESIGN:
  * - Thin controller - all business logic in CitizenSignoffService
- * - Uses header-based auth (will migrate to JWT later)
+ * - Uses JWT authentication via UserContextHolder
  * - This is the ONLY path for citizens to close their complaints
  * 
  * DOMAIN RULES ENFORCED:
@@ -54,13 +49,20 @@ public class CitizenSignoffController {
     private static final Logger log = LoggerFactory.getLogger(CitizenSignoffController.class);
     
     private final CitizenSignoffService citizenSignoffService;
-    private final UserRepository userRepository;
     
-    public CitizenSignoffController(
-            CitizenSignoffService citizenSignoffService,
-            UserRepository userRepository) {
+    public CitizenSignoffController(CitizenSignoffService citizenSignoffService) {
         this.citizenSignoffService = citizenSignoffService;
-        this.userRepository = userRepository;
+    }
+    
+    /**
+     * Get current user context from JWT.
+     */
+    private UserContext getCurrentUserContext() {
+        UserContext context = UserContextHolder.getContext();
+        if (context == null) {
+            throw new SecurityException("User not authenticated");
+        }
+        return context;
     }
     
     /**
@@ -85,16 +87,11 @@ public class CitizenSignoffController {
     @PostMapping("/{complaintId}/signoff")
     public ResponseEntity<CitizenSignoffResponse> signoff(
             @PathVariable Long complaintId,
-            @Valid @RequestBody CitizenSignoffRequest request,
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @Valid @RequestBody CitizenSignoffRequest request) {
         
+        UserContext userContext = getCurrentUserContext();
         log.info("Citizen signoff: complaint={}, citizen={}, accepted={}", 
-            complaintId, userId, request.isAccepted());
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+            complaintId, userContext.userId(), request.isAccepted());
         
         CitizenSignoffResponse response = citizenSignoffService.processSignoff(
             complaintId, request, userContext
@@ -132,48 +129,5 @@ public class CitizenSignoffController {
     @GetMapping("/{complaintId}/has-signoff")
     public ResponseEntity<Boolean> hasSignoff(@PathVariable Long complaintId) {
         return ResponseEntity.ok(citizenSignoffService.hasAcceptedSignoff(complaintId));
-    }
-    
-    // ==================== HELPER METHODS ====================
-    
-    /**
-     * Resolve UserContext from request headers or database.
-     */
-    private UserContext resolveUserContext(
-            Long userId, 
-            String userRole, 
-            UserType userType,
-            Long departmentId) {
-        
-        // If we have a user ID, fetch from database for accurate role
-        if (userId != null) {
-            User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-            
-            UserRole role = UserRole.fromUserType(user.getUserType());
-            return new UserContext(userId, role, user.getDeptId());
-        }
-        
-        // Fallback to headers
-        UserRole role = resolveRole(userRole, userType);
-        return new UserContext(userId, role, departmentId);
-    }
-    
-    private UserRole resolveRole(String userRole, UserType userType) {
-        if (userRole != null && !userRole.isEmpty()) {
-            try {
-                return UserRole.valueOf(userRole.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid user role from header: {}", userRole);
-            }
-        }
-        
-        if (userType != null) {
-            return UserRole.fromUserType(userType);
-        }
-        
-        // For signoff, default must be CITIZEN since that's the only allowed role
-        log.warn("No user role provided, defaulting to CITIZEN");
-        return UserRole.CITIZEN;
     }
 }
