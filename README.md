@@ -1,5 +1,7 @@
 # 🏛️ Argus - AI-Powered Grievance Redressal System
 
+Application link : https://argusweb.tech/
+
 <div align="center">
 
 ![Java](https://img.shields.io/badge/Java-17-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
@@ -77,6 +79,9 @@
 ## 🏗️ Architecture
 
 ### System Overview
+
+![1](https://github.com/user-attachments/assets/2eebe1eb-194e-412c-9ada-6bcf4c338f22)
+
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
