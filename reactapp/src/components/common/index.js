@@ -36,3 +36,6 @@ export { default as AuditTimelineItem } from './AuditTimelineItem';
 // Notification components
 export { default as NotificationPanel } from './NotificationPanel';
 export { default as NotificationBell } from './NotificationBell';
+
+// Branding
+export { default as ArgusLogo } from './ArgusLogo';

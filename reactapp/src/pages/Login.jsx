@@ -1,10 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input, Label, Separator } from '../components/ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input, Label, Separator, Badge } from '../components/ui';
 import { ThemeToggle } from '../components/theme-toggle';
-import { Mail, Lock, Eye, EyeOff, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArgusLogo } from '../components/common';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, User, Shield, ShieldCheck, Landmark, Users, Wrench } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { ROLE_DASHBOARD_ROUTES } from '../constants/roles';
+
+// Predefined test users from DataInitializer
+const TEST_USERS = [
+  { 
+    name: 'Citizen', 
+    email: 'citizen@gmail.com', 
+    role: 'CITIZEN',
+    icon: User,
+    description: 'File grievances',
+    color: 'bg-blue-500'
+  },
+  { 
+    name: 'Staff', 
+    email: 'roads1@gmail.com', 
+    role: 'STAFF',
+    icon: Wrench,
+    description: 'Handle complaints',
+    color: 'bg-green-500'
+  },
+  { 
+    name: 'Dept Head', 
+    email: 'roadshead@gmail.com', 
+    role: 'DEPT_HEAD',
+    icon: Users,
+    description: 'Manage department',
+    color: 'bg-orange-500'
+  },
+  { 
+    name: 'Admin', 
+    email: 'admin@gmail.com', 
+    role: 'ADMIN',
+    icon: Shield,
+    description: 'Route complaints',
+    color: 'bg-purple-500'
+  },
+  { 
+    name: 'Super Admin', 
+    email: 'superadmin@gmail.com', 
+    role: 'SUPER_ADMIN',
+    icon: ShieldCheck,
+    description: 'System management',
+    color: 'bg-red-500'
+  },
+  { 
+    name: 'Commissioner', 
+    email: 'commissioner@gmail.com', 
+    role: 'MUNICIPAL_COMMISSIONER',
+    icon: Landmark,
+    description: 'Oversight & escalations',
+    color: 'bg-amber-600'
+  },
+];
+
+const DEFAULT_PASSWORD = 'argusargus';
 
 function Login() {
   const navigate = useNavigate();
@@ -27,6 +82,14 @@ function Login() {
       window.history.replaceState({}, document.title);
     }
   }, [location.state?.message]);
+
+  // Handle quick login - auto-fill credentials
+  const handleQuickLogin = (user) => {
+    setEmail(user.email);
+    setPassword(DEFAULT_PASSWORD);
+    clearError();
+    setSuccessMessage(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -54,8 +117,8 @@ function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-              <Building2 className="h-6 w-6 text-primary-foreground" />
+            <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
+              <ArgusLogo className="h-7 w-7 text-primary-foreground" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
@@ -65,6 +128,43 @@ function Login() {
         </CardHeader>
         
         <CardContent>
+          {/* Quick Login Section for Testing */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              {/* <span className="text-sm font-medium text-muted-foreground">Click to autofill</span> */}
+              <Badge variant="secondary" className="text-xs mx-auto text-center">Click to autofill</Badge>
+            </div>
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-2">
+              {TEST_USERS.map((user) => {
+                const Icon = user.icon;
+                return (
+                  <Button
+                    key={user.email}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-auto py-2 px-3 justify-start gap-2 hover:bg-accent"
+                    onClick={() => handleQuickLogin(user)}
+                    disabled={isLoading}
+                  >
+                    <div className={`h-6 w-6 rounded-full ${user.color} flex items-center justify-center shrink-0`}>
+                      <Icon className="h-3 w-3 text-white" />
+                    </div>
+                    <div className="text-left min-w-0">
+                      <div className="text-xs font-medium truncate">{user.name}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{user.description}</div>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2 text-center">
+              Password: <code className="bg-muted px-1 rounded">{DEFAULT_PASSWORD}</code>
+            </p>
+          </div>
+
+          <Separator className="mb-6" />
+
           {/* Success Alert (e.g., from signup redirect) */}
           {successMessage && (
             <div className="flex items-center gap-2 p-3 mb-4 text-sm text-green-800 bg-green-100 rounded-lg dark:bg-green-900 dark:text-green-200">

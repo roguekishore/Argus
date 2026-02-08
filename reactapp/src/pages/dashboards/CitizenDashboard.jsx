@@ -100,21 +100,21 @@ const citizenMenuItems = [
       },
     ],
   },
-  {
-    label: "Account",
-    items: [
-      {
-        id: "profile",
-        label: "My Profile",
-        icon: <User className="h-4 w-4" />,
-      },
-      {
-        id: "help",
-        label: "Help & Support",
-        icon: <HelpCircle className="h-4 w-4" />,
-      },
-    ],
-  },
+  // {
+  //   label: "Account",
+  //   items: [
+  //     {
+  //       id: "profile",
+  //       label: "My Profile",
+  //       icon: <User className="h-4 w-4" />,
+  //     },
+  //     {
+  //       id: "help",
+  //       label: "Help & Support",
+  //       icon: <HelpCircle className="h-4 w-4" />,
+  //     },
+  //   ],
+  // },
 ];
 
 // =============================================================================

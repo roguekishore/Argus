@@ -30,9 +30,8 @@ import {
   BreadcrumbPage,
 } from "../components/ui";
 import { ThemeToggle } from "../components/theme-toggle";
-import { NotificationBell } from "../components/common";
+import { NotificationBell, ArgusLogo } from "../components/common";
 import {
-  Building2,
   ChevronDown,
   LogOut,
   Settings,
@@ -57,11 +56,11 @@ const SidebarNav = ({ menuItems, activeItem, setActiveItem, user }) => {
       <SidebarHeader>
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Building2 className="h-4 w-4 text-primary-foreground" />
+            <ArgusLogo className="h-5 w-5 text-primary-foreground" />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
-              <span className="text-sm font-semibold">Grievance Portal</span>
+              <span className="text-sm font-semibold">Argus</span>
               <span className="text-xs text-muted-foreground">{user?.role || "Dashboard"}</span>
             </div>
           )}

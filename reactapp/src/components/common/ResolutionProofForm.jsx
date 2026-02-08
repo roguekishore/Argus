@@ -190,13 +190,13 @@ const ResolutionProofForm = ({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
             {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel}>
+              <Button type="button" variant="outline" onClick={onCancel} className="w-full sm:w-auto">
                 Cancel
               </Button>
             )}
-            <Button type="submit" disabled={isLoading || !proofImage}>
+            <Button type="submit" disabled={isLoading || !proofImage} className="w-full sm:w-auto">
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

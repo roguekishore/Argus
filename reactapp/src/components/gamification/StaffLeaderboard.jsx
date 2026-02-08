@@ -109,49 +109,53 @@ const StaffLeaderboard = ({
           {leaderboard.map((staff) => (
             <div
               key={staff.userId}
-              className={`p-4 rounded-lg border ${
+              className={`p-3 sm:p-4 rounded-lg border ${
                 staff.rank <= 3 ? 'bg-muted/50 border-primary/20' : ''
               }`}
             >
-              <div className="flex items-center gap-4">
-                {/* Rank */}
-                <div className="text-xl font-bold w-12 text-center">
-                  {getRankDisplay(staff.rank)}
-                </div>
-
-                {/* Name & Department */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{staff.name}</p>
-                  {showDepartment && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Building2 className="h-3 w-3" />
-                      {staff.departmentName}
-                    </p>
-                  )}
-                </div>
-
-                {/* Quick Stats */}
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="text-center">
-                    <CheckCircle2 className="h-4 w-4 mx-auto text-green-500" />
-                    <span className="text-xs">{staff.complaintsResolved} closed</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  {/* Rank */}
+                  <div className="text-xl font-bold w-10 sm:w-12 text-center shrink-0">
+                    {getRankDisplay(staff.rank)}
                   </div>
-                  <div className="text-center">
-                    <Timer className="h-4 w-4 mx-auto text-blue-500" />
-                    <span className="text-xs">+{Math.round(staff.speedScore || 0)} deadline</span>
-                  </div>
-                  <div className="text-center">
-                    <Star className="h-4 w-4 mx-auto text-yellow-500" />
-                    <span className="text-xs">+{Math.round(staff.satisfactionScore || 0)} rating</span>
+
+                  {/* Name & Department */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{staff.name}</p>
+                    {showDepartment && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Building2 className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{staff.departmentName}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {/* Total Points */}
-                <div className="text-right">
-                  <span className={`text-2xl font-bold ${getScoreColor(staff.compositeScore)}`}>
-                    {Math.round(staff.compositeScore)}
-                  </span>
-                  <p className="text-xs text-muted-foreground">points</p>
+                <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 sm:gap-4 pl-10 sm:pl-0">
+                  {/* Quick Stats */}
+                  <div className="flex items-center gap-3 sm:gap-4 text-sm">
+                    <div className="text-center">
+                      <CheckCircle2 className="h-4 w-4 mx-auto text-green-500" />
+                      <span className="text-xs">{staff.complaintsResolved} closed</span>
+                    </div>
+                    <div className="text-center hidden xs:block">
+                      <Timer className="h-4 w-4 mx-auto text-blue-500" />
+                      <span className="text-xs">+{Math.round(staff.speedScore || 0)} deadline</span>
+                    </div>
+                    <div className="text-center hidden sm:block">
+                      <Star className="h-4 w-4 mx-auto text-yellow-500" />
+                      <span className="text-xs">+{Math.round(staff.satisfactionScore || 0)} rating</span>
+                    </div>
+                  </div>
+
+                  {/* Total Points */}
+                  <div className="text-right">
+                    <span className={`text-xl sm:text-2xl font-bold ${getScoreColor(staff.compositeScore)}`}>
+                      {Math.round(staff.compositeScore)}
+                    </span>
+                    <p className="text-xs text-muted-foreground">points</p>
+                  </div>
                 </div>
               </div>
 

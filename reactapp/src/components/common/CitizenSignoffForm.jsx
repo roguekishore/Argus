@@ -192,17 +192,18 @@ const CitizenSignoffForm = ({
             </div>
 
             {/* Actions */}
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-2">
               <Button 
                 type="button" 
                 variant="ghost" 
                 onClick={() => setMode('choose')}
+                className="w-full sm:w-auto"
               >
                 Back
               </Button>
               <Button 
                 type="submit" 
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
                 disabled={isLoading || rating === 0}
               >
                 {isLoading ? (
@@ -213,7 +214,7 @@ const CitizenSignoffForm = ({
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Accept & Close Complaint
+                    Accept & Close
                   </>
                 )}
               </Button>

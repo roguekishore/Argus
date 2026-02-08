@@ -242,7 +242,7 @@ const CategoryManagement = () => {
             <div className="divide-y">
               {filteredCategories.map(category => (
                 <div key={category.id} className="py-4">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <FolderTree className="h-4 w-4 text-primary" />
@@ -270,13 +270,14 @@ const CategoryManagement = () => {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 self-start">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => openEditModal(category)}
                       >
                         <Edit2 className="h-4 w-4" />
+                        <span className="ml-1 sm:hidden">Edit</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -285,6 +286,7 @@ const CategoryManagement = () => {
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />
+                        <span className="ml-1 sm:hidden">Delete</span>
                       </Button>
                     </div>
                   </div>

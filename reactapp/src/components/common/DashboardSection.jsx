@@ -85,25 +85,25 @@ export const PageHeader = ({ title, description, actions }) => {
  */
 export const StatsGrid = ({ stats, columns = 4 }) => {
   const colClass = {
-    2: 'md:grid-cols-2',
-    3: 'md:grid-cols-3',
-    4: 'md:grid-cols-2 lg:grid-cols-4',
+    2: 'grid-cols-2 md:grid-cols-2',
+    3: 'grid-cols-2 md:grid-cols-3',
+    4: 'grid-cols-2 md:grid-cols-2 lg:grid-cols-4',
   };
 
   return (
-    <div className={cn('grid gap-4', colClass[columns] || colClass[4])}>
+    <div className={cn('grid gap-3 sm:gap-4', colClass[columns] || colClass[4])}>
       {stats.map((stat, index) => (
         <Card key={index}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardHeader className="flex flex-row items-center justify-between p-3 sm:p-6 pb-1 sm:pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground line-clamp-1">
               {stat.title}
             </CardTitle>
-            {stat.icon && stat.icon}
+            {stat.icon && <span className="shrink-0 [&>svg]:w-4 [&>svg]:h-4 sm:[&>svg]:w-5 sm:[&>svg]:h-5">{stat.icon}</span>}
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stat.value}</div>
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{stat.value}</div>
             {stat.description && (
-              <p className="text-xs text-muted-foreground">{stat.description}</p>
+              <p className="text-xs text-muted-foreground line-clamp-1">{stat.description}</p>
             )}
           </CardContent>
         </Card>

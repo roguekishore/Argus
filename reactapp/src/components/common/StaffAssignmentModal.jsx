@@ -26,7 +26,7 @@ import {
   Loader2,
   UserCheck
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, maskPhoneNumber } from '../../lib/utils';
 
 /**
  * StaffAssignmentModal Component
@@ -184,7 +184,7 @@ const StaffAssignmentModal = ({
                         {(staff.mobile || staff.phone) && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Phone className="h-3 w-3" />
-                            {staff.mobile || staff.phone}
+                            {maskPhoneNumber(staff.mobile || staff.phone)}
                           </p>
                         )}
                       </div>
