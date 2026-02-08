@@ -18,6 +18,7 @@ import RoleBasedRedirect from '../components/auth/RoleBasedRedirect';
 // Lazy load pages for code splitting
 const Login = lazy(() => import('../pages/Login'));
 const Signup = lazy(() => import('../pages/Signup'));
+const LandingPage = lazy(() => import('../pages/LandingPage'));
 
 // Dashboard imports - can be lazy loaded for larger apps
 const CitizenDashboard = lazy(() => import('../pages/dashboards/CitizenDashboard'));
@@ -102,14 +103,10 @@ const AppRouter = () => {
             }
           />
 
-          {/* Role-based dashboard redirector */}
+          {/* Landing page for unauthenticated users, redirect to dashboard for authenticated */}
           <Route
             path="/"
-            element={
-              <ProtectedRoute>
-                <RoleBasedRedirect />
-              </ProtectedRoute>
-            }
+            element={<LandingOrDashboard />}
           />
 
           {/* Dashboard routes - dynamically generated from config */}
@@ -189,6 +186,20 @@ const AppRouter = () => {
 };
 
 /**
+ * LandingOrDashboard - Shows landing page for guests, redirects to dashboard for authenticated users
+ */
+const LandingOrDashboard = () => {
+  const { isAuthenticated, role } = useUser();
+
+  if (isAuthenticated) {
+    const dashboardRoute = ROLE_DASHBOARD_ROUTES[role] || '/dashboard/citizen';
+    return <Navigate to={dashboardRoute} replace />;
+  }
+
+  return <LandingPage />;
+};
+
+/**
  * NotFoundRedirect - Handles 404 routes
  */
 const NotFoundRedirect = () => {
@@ -199,7 +210,7 @@ const NotFoundRedirect = () => {
     return <Navigate to={dashboardRoute} replace />;
   }
 
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/" replace />;
 };
 
 export default AppRouter;

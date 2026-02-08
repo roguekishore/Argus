@@ -1,11 +1,10 @@
 /**
  * UserManagement Component
  * 
- * CRUD operations for users in the admin dashboard
- * - View all users
+ * Operations for users in the admin dashboard
+ * - View all users (with masked phone numbers for privacy)
  * - Create new staff users
  * - Assign department heads
- * - Delete users
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -25,7 +24,6 @@ import {
   Users,
   Plus,
   RefreshCw,
-  Trash2,
   Crown,
   UserPlus,
   X,
@@ -35,6 +33,7 @@ import {
   Mail,
   Shield
 } from 'lucide-react';
+import { maskPhoneNumber } from '../../lib/utils';
 
 // User types for display
 const USER_TYPE_CONFIG = {
@@ -156,20 +155,6 @@ const UserManagement = () => {
     }
   };
 
-  // Handle delete user
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
-    
-    setError(null);
-    try {
-      await usersService.delete(userId);
-      await fetchData();
-    } catch (err) {
-      console.error('Failed to delete user:', err);
-      setError(err.message || 'Failed to delete user');
-    }
-  };
-
   // Get department name
   const getDepartmentName = (deptId) => {
     const dept = departments.find(d => d.id === deptId);
@@ -219,23 +204,24 @@ const UserManagement = () => {
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <div className="flex-1 min-w-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name, email, or mobile..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 w-full"
                 />
               </div>
             </div>
-            <select
-              className="h-10 px-3 border rounded-md bg-background min-w-[150px]"
-              value={filterUserType}
-              onChange={(e) => setFilterUserType(e.target.value)}
-            >
+            <div className="flex flex-col xs:flex-row gap-3">
+              <select
+                className="h-10 px-3 border rounded-md bg-background w-full xs:min-w-[140px] text-sm"
+                value={filterUserType}
+                onChange={(e) => setFilterUserType(e.target.value)}
+              >
               <option value="">All Types</option>
               <option value="CITIZEN">Citizen</option>
               <option value="STAFF">Staff</option>
@@ -244,7 +230,7 @@ const UserManagement = () => {
               <option value="MUNICIPAL_COMMISSIONER">Commissioner</option>
             </select>
             <select
-              className="h-10 px-3 border rounded-md bg-background min-w-[150px]"
+              className="h-10 px-3 border rounded-md bg-background w-full xs:min-w-[140px] text-sm"
               value={filterDepartment}
               onChange={(e) => setFilterDepartment(e.target.value)}
             >
@@ -255,6 +241,7 @@ const UserManagement = () => {
                 </option>
               ))}
             </select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -279,7 +266,7 @@ const UserManagement = () => {
           ) : (
             <div className="divide-y">
               {filteredUsers.map(user => (
-                <div key={user.userId} className="py-4 flex items-center justify-between gap-4">
+                <div key={user.userId} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">{user.name}</span>
@@ -290,16 +277,16 @@ const UserManagement = () => {
                         <Crown className="h-4 w-4 text-amber-500" />
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    <div className="flex flex-col xs:flex-row flex-wrap gap-2 xs:gap-4 text-sm text-muted-foreground">
                       {user.email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {user.email}
+                        <span className="flex items-center gap-1 truncate">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{user.email}</span>
                         </span>
                       )}
                       <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {user.mobile}
+                        <Phone className="h-3 w-3 shrink-0" />
+                        {maskPhoneNumber(user.mobile)}
                       </span>
                       {user.deptId && (
                         <span className="flex items-center gap-1">
@@ -318,16 +305,6 @@ const UserManagement = () => {
                         title="Assign as Department Head"
                       >
                         <Crown className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {!['ADMIN', 'SUPER_ADMIN', 'MUNICIPAL_COMMISSIONER'].includes(user.userType) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteUser(user.userId)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
                   </div>

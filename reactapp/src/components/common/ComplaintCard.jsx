@@ -228,7 +228,7 @@ const ComplaintCard = ({
   return (
     <Card className={cn('transition-all hover:shadow-md', className)}>
       <CardHeader className={cn('pb-2', compact && 'py-3')}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Complaint ID */}
@@ -282,7 +282,7 @@ const ComplaintCard = ({
           </div>
 
           {/* Right side - SLA and Status badges */}
-          <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="flex flex-row sm:flex-col items-start sm:items-end gap-2 shrink-0">
             {/* Status Badge on right */}
             <Badge className={cn(stateConfig.color, stateConfig.darkColor)}>
               {stateConfig.label || complaint.status}
@@ -307,7 +307,7 @@ const ComplaintCard = ({
       <CardContent className={compact ? 'py-2' : ''}>
         {/* Metadata Grid - only show in non-compact mode */}
         {!compact && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted-foreground mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-muted-foreground mb-4">
             {/* Location */}
             {showField('location') && complaint.location && (
               <div className="flex items-center gap-1">
@@ -360,7 +360,7 @@ const ComplaintCard = ({
 
         {/* Action Buttons - rendered based on provided callbacks */}
         {actions.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-2 border-t">
+          <div className="flex flex-wrap gap-2 pt-3 border-t">
             {actions.map((action) => (
               <Button 
                 key={action.key}

@@ -9,4 +9,4 @@
 .env
 *.env.local
 
-application.properties
+# application.properties

@@ -647,13 +647,14 @@ const ComplaintForm = ({
           </div>
         </CardContent>
 
-        <CardFooter className="flex justify-between">
+        <CardFooter className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-between">
           {onCancel && (
             <Button 
               type="button" 
               variant="outline" 
               onClick={onCancel}
               disabled={isLoading || isValidating}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -661,7 +662,7 @@ const ComplaintForm = ({
           <Button 
             type="submit" 
             disabled={isLoading || isValidating || !formData.subject.trim() || !isDescriptionValid}
-            className={cn(!onCancel && "ml-auto")}
+            className={cn("w-full sm:w-auto", !onCancel && "sm:ml-auto")}
           >
             {isValidating ? (
               <>

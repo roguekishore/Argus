@@ -13,6 +13,7 @@ import { Trophy, Medal, Award, Star, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import gamificationService from '../../services/api/gamificationService';
+import { maskPhoneNumber } from '../../lib/utils';
 
 // Tier colors and icons
 const TIER_CONFIG = {
@@ -113,39 +114,43 @@ const CitizenLeaderboard = ({ limit = 10, showTitle = true, compact = false }) =
             return (
               <div
                 key={citizen.userId}
-                className={`flex items-center gap-4 p-3 rounded-lg border ${
+                className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 rounded-lg border ${
                   citizen.rank <= 3 ? 'bg-muted/50' : ''
                 }`}
               >
-                {/* Rank */}
-                <div className="text-lg font-bold w-10 text-center">
-                  {getRankDisplay(citizen.rank)}
-                </div>
-
-                {/* Tier Badge */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tierConfig.color}`}>
-                  <TierIcon tier={citizen.tier} />
-                </div>
-
-                {/* Name & Mobile */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{citizen.name}</p>
-                  <p className="text-xs text-muted-foreground">{citizen.mobile}</p>
-                </div>
-
-                {/* Stats */}
-                {!compact && (
-                  <div className="text-right text-sm text-muted-foreground">
-                    <p>{citizen.totalComplaints} filed</p>
-                    <p>{citizen.resolvedComplaints} resolved</p>
+                <div className="flex items-center gap-3 sm:gap-4">
+                  {/* Rank */}
+                  <div className="text-lg font-bold w-8 sm:w-10 text-center">
+                    {getRankDisplay(citizen.rank)}
                   </div>
-                )}
 
-                {/* Points */}
-                <div className="text-right">
-                  <Badge variant="secondary" className="font-bold">
-                    {citizen.points} pts
-                  </Badge>
+                  {/* Tier Badge */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${tierConfig.color}`}>
+                    <TierIcon tier={citizen.tier} />
+                  </div>
+
+                  {/* Name & Mobile */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{citizen.name}</p>
+                    <p className="text-xs text-muted-foreground">{maskPhoneNumber(citizen.mobile)}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-4 pl-11 sm:pl-0">
+                  {/* Stats */}
+                  {!compact && (
+                    <div className="text-right text-sm text-muted-foreground">
+                      <p>{citizen.totalComplaints} filed</p>
+                      <p>{citizen.resolvedComplaints} resolved</p>
+                    </div>
+                  )}
+
+                  {/* Points */}
+                  <div className="text-right">
+                    <Badge variant="secondary" className="font-bold">
+                      {citizen.points} pts
+                    </Badge>
+                  </div>
                 </div>
               </div>
             );

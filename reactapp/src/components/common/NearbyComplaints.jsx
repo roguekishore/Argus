@@ -186,14 +186,14 @@ const NearbyComplaints = ({ userId, className }) => {
 
   return (
     <Card className={cn("w-full", className)}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               Community Complaints
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="mt-1">
               See issues in your area and show support with "Me Too"
             </CardDescription>
           </div>
@@ -203,6 +203,7 @@ const NearbyComplaints = ({ userId, className }) => {
             size="sm"
             onClick={viewMode === 'nearby' ? fetchNearbyComplaints : fetchTrendingComplaints}
             disabled={isLoading}
+            className="self-start sm:self-auto"
           >
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
           </Button>
@@ -214,6 +215,7 @@ const NearbyComplaints = ({ userId, className }) => {
             variant={viewMode === 'nearby' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setViewMode('nearby')}
+            className="flex-1 sm:flex-none"
           >
             <MapPin className="h-4 w-4 mr-1" />
             Nearby
@@ -222,6 +224,7 @@ const NearbyComplaints = ({ userId, className }) => {
             variant={viewMode === 'trending' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setViewMode('trending')}
+            className="flex-1 sm:flex-none"
           >
             <TrendingUp className="h-4 w-4 mr-1" />
             Trending
@@ -277,9 +280,9 @@ const NearbyComplaints = ({ userId, className }) => {
             {complaints.map((complaint) => (
               <div
                 key={complaint.complaintId}
-                className="p-4 rounded-lg border bg-card hover:shadow-sm transition-shadow"
+                className="p-3 sm:p-4 rounded-lg border bg-card hover:shadow-sm transition-shadow"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                   <div className="flex-1 min-w-0">
                     {/* Title and Status */}
                     <div className="flex items-center gap-2 flex-wrap">
@@ -311,7 +314,7 @@ const NearbyComplaints = ({ userId, className }) => {
                     </p>
 
                     {/* Meta */}
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-muted-foreground">
                       {complaint.location && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />

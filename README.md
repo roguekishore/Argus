@@ -115,6 +115,7 @@
 
 ```
 com.backend.springapp/
+├── SpringappApplication.java # Main application entry point
 ├── audit/                  # Audit logging system
 ├── config/                 # Application configuration
 ├── controller/             # REST API controllers
@@ -139,14 +140,18 @@ reactapp/src/
 ├── components/
 │   ├── admin/              # Admin-specific components
 │   ├── auth/               # Authentication components
-│   ├── common/             # Reusable components
+│   ├── common/             # Reusable components (ComplaintCard, etc.)
 │   ├── gamification/       # Leaderboards & badges
-│   └── ui/                 # UI primitives
+│   └── ui/                 # UI primitives (shadcn/ui)
 ├── constants/              # Roles, permissions, configs
 ├── context/                # React context (UserContext)
 ├── hooks/                  # Custom React hooks
 ├── layouts/                # Dashboard layouts
-├── pages/                  # Page components & dashboards
+├── pages/
+│   ├── LandingPage.jsx     # Public landing page
+│   ├── Login.jsx           # Login page
+│   ├── Signup.jsx          # Registration page
+│   └── dashboards/         # Role-specific dashboards
 ├── router/                 # Routing configuration
 ├── services/               # API service layer
 └── lib/                    # Utility functions
@@ -231,12 +236,12 @@ reactapp/src/
 
 | Role | Email | Password |
 |------|-------|----------|
-| Citizen | citizen@test.com | password |
-| Staff | staff@test.com | password |
-| Department Head | head@test.com | password |
-| Admin | admin@test.com | password |
-| Super Admin | superadmin@test.com | password |
-| Municipal Commissioner | commissioner@test.com | password |
+| Citizen | citizen@gmail.com | argusargus |
+| Staff | roads1@gmail.com | argusargus |
+| Department Head | roadshead@gmail.com | argusargus |
+| Admin | admin@gmail.com | argusargus |
+| Super Admin | superadmin@gmail.com | argusargus |
+| Municipal Commissioner | commissioner@gmail.com | argusargus |
 
 ---
 
@@ -288,9 +293,11 @@ POST   /api/escalations/trigger                         # Manual trigger
 
 #### Gamification
 ```http
-GET    /api/gamification/citizen/leaderboard            # Citizen leaderboard
-GET    /api/gamification/staff/leaderboard              # Staff leaderboard
-GET    /api/gamification/points/{userId}                # User points
+GET    /api/gamification/citizens/leaderboard       # Citizen leaderboard
+GET    /api/gamification/staff/leaderboard          # Staff leaderboard
+GET    /api/gamification/citizens/{citizenId}/points # Citizen points
+GET    /api/gamification/staff/{staffId}/stats      # Staff statistics
+GET    /api/gamification/thresholds                 # Tier thresholds
 ```
 
 ---
@@ -440,12 +447,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For support, please open an issue in the GitHub repository or contact the development team.
+For support, please send a mail to contactforkishore@gmail.com .
 
 ---
 
 <div align="center">
 
-**Built with ❤️ for better civic engagement**
+**Built by Maverick for better civic engagement**
 
 </div>

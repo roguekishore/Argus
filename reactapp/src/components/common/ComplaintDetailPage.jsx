@@ -258,15 +258,15 @@ const ComplaintDetailPage = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header with back button */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={handleBack}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+        <Button variant="ghost" size="sm" onClick={handleBack} className="self-start">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-xl sm:text-2xl font-bold">
             Complaint #{complaint.complaintId}
           </h1>
         </div>
@@ -274,15 +274,15 @@ const ComplaintDetailPage = ({
 
       {/* Main complaint card */}
       <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-xl">{complaint.title}</CardTitle>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <CardTitle className="text-lg sm:text-xl break-words">{complaint.title}</CardTitle>
               <CardDescription className="mt-1">
                 Filed on {formatDate(complaint.createdTime)}
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 shrink-0">
               <Badge className={cn(stateConfig.color, stateConfig.darkColor)}>
                 {stateConfig.label || complaint.status}
               </Badge>

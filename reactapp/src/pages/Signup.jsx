@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input, Label, Separator } from '../components/ui';
 import { ThemeToggle } from '../components/theme-toggle';
-import { Mail, Lock, Eye, EyeOff, Building2, User, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArgusLogo } from '../components/common';
+import { Mail, Lock, Eye, EyeOff, User, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 function Signup() {
@@ -75,8 +76,8 @@ function Signup() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-              <Building2 className="h-6 w-6 text-primary-foreground" />
+            <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
+              <ArgusLogo className="h-7 w-7 text-primary-foreground" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Create an account</CardTitle>

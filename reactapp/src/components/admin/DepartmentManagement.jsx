@@ -18,6 +18,7 @@ import {
 } from '../ui';
 import { PageHeader } from '../common';
 import { departmentsService, usersService } from '../../services';
+import { maskPhoneNumber } from '../../lib/utils';
 import {
   Building,
   Users,
@@ -338,7 +339,7 @@ const DepartmentManagement = () => {
                                     )}
                                     <span className="flex items-center gap-1">
                                       <Phone className="h-3 w-3" />
-                                      {deptDetails[dept.id].head.mobile}
+                                      {maskPhoneNumber(deptDetails[dept.id].head.mobile)}
                                     </span>
                                   </div>
                                 </div>
@@ -383,7 +384,7 @@ const DepartmentManagement = () => {
                                         )}
                                         <span className="flex items-center gap-1">
                                           <Phone className="h-3 w-3" />
-                                          {staff.mobile}
+                                          {maskPhoneNumber(staff.mobile)}
                                         </span>
                                       </div>
                                     </div>
