@@ -40,10 +40,14 @@ const NotificationDropdown = ({
         onClick={onClose}
       />
       
-      {/* Dropdown */}
+      {/* Dropdown - Fixed position on mobile for proper centering */}
       <div className={cn(
-        'absolute right-0 top-full mt-2 z-50',
-        'w-80 sm:w-96',
+        'z-50',
+        // Mobile: fixed position, centered horizontally
+        'fixed left-2 right-2 top-16',
+        // Desktop: absolute position relative to bell
+        'sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2',
+        'sm:w-96',
         'bg-background rounded-lg shadow-lg border border-border',
         'animate-in fade-in-0 zoom-in-95 duration-200',
         className
