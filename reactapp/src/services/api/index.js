@@ -24,3 +24,6 @@ export { default as communityService } from './communityService';
 
 // Gamification (leaderboards, points)
 export { default as gamificationService } from './gamificationService';
+
+// S3 Direct Upload (bypasses CloudFront for file uploads)
+export { default as s3UploadService } from './s3UploadService';

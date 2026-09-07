@@ -6,6 +6,7 @@
  */
 
 import apiClient from './apiClient';
+import s3UploadService from './s3UploadService';
 
 const complaintsService = {
   // ============================================
@@ -23,13 +24,63 @@ const complaintsService = {
   },
 
   /**
-   * Create a new complaint with image for a citizen
-   * POST /api/complaints/citizen/{citizenId}/with-image
+   * Create a new complaint with DIRECT S3 image upload.
+   * 
+   * ARCHITECTURE (Production-safe):
+   * 1. If image provided: Upload directly to S3 using pre-signed URL (bypasses CloudFront)
+   * 2. Then: Create complaint via JSON API with S3 key (goes through CloudFront)
+   * 
+   * This avoids CloudFront's request size limits and CORS issues with multipart uploads.
+   * 
+   * POST /api/complaints/citizen/{citizenId}/with-s3-image
    * @param {string|number} citizenId 
    * @param {Object} complaintData - { subject, description, location, latitude, longitude }
    * @param {File|null} imageFile - Optional image file
+   * @param {function|null} onProgress - Optional upload progress callback (0-100)
    */
-  createWithImage: (citizenId, complaintData, imageFile = null) => {
+  createWithImage: async (citizenId, complaintData, imageFile = null, onProgress = null) => {
+    let imageS3Key = null;
+    let imageMimeType = null;
+
+    // Step 1: Upload image directly to S3 if provided
+    if (imageFile) {
+      try {
+        console.log('📤 Uploading image directly to S3...');
+        const uploadResult = await s3UploadService.uploadFile(imageFile, onProgress);
+        imageS3Key = uploadResult.objectKey;
+        imageMimeType = uploadResult.contentType;
+        console.log('✅ Image uploaded to S3:', imageS3Key);
+      } catch (uploadError) {
+        console.error('❌ S3 upload failed:', uploadError);
+        // Continue without image - complaint creation should not fail
+        // because of image upload failure
+      }
+    }
+
+    // Step 2: Create complaint via JSON API (goes through CloudFront normally)
+    const requestBody = {
+      title: complaintData.subject || '',
+      description: complaintData.description || '',
+      location: complaintData.location || '',
+      latitude: complaintData.latitude,
+      longitude: complaintData.longitude,
+      imageS3Key: imageS3Key,
+      imageMimeType: imageMimeType,
+    };
+
+    return apiClient.post(`/complaints/citizen/${citizenId}/with-s3-image`, requestBody);
+  },
+
+  /**
+   * [LEGACY] Create complaint with multipart form upload (through CloudFront).
+   * 
+   * ⚠️ WARNING: This may fail in production due to CloudFront size limits!
+   * Use createWithImage instead, which uses direct S3 upload.
+   * 
+   * POST /api/complaints/citizen/{citizenId}/with-image
+   * @deprecated Use createWithImage instead
+   */
+  createWithImageLegacy: (citizenId, complaintData, imageFile = null) => {
     const formData = new FormData();
     
     // Add complaint data as individual form fields (backend expects @RequestParam)
