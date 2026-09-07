@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -65,7 +66,7 @@ public class ResolutionProof {
     @Column(name = "complaint_id", nullable = false)
     private Long complaintId;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "complaint_id", insertable = false, updatable = false)
     private Complaint complaint;
 
@@ -76,7 +77,7 @@ public class ResolutionProof {
     @Column(name = "staff_id", nullable = false)
     private Long staffId;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "staff_id", insertable = false, updatable = false)
     private User staff;
 

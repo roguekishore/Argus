@@ -12,6 +12,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -54,7 +55,7 @@ public class Complaint {
     private Long categoryId;
 
     @JsonIgnore
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "category_id", insertable = false, updatable = false)
     private Category category;
 
@@ -62,7 +63,7 @@ public class Complaint {
     private Long departmentId;
 
     @JsonIgnore
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "department_id", insertable = false, updatable = false)
     private Department department;
 
@@ -93,7 +94,7 @@ public class Complaint {
     private Long citizenId;
 
     @JsonIgnore
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "citizen_id", insertable = false, updatable = false)
     private User citizen;
 
@@ -101,7 +102,7 @@ public class Complaint {
     private Long staffId;
 
     @JsonIgnore
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "staff_id", insertable = false, updatable = false)
     private User staff;
 
