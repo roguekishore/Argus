@@ -176,6 +176,89 @@ public class ComplaintController {
     }
 
     /**
+     * Create a new complaint with a pre-uploaded S3 image key.
+     * 
+     * USE THIS FOR DIRECT S3 UPLOADS:
+     * This endpoint is used when the frontend uploads images directly to S3
+     * using pre-signed URLs. The frontend first uploads to S3, then calls
+     * this endpoint with the S3 object key.
+     * 
+     * FLOW:
+     * 1. Frontend calls POST /api/s3/presigned-upload to get upload URL and objectKey
+     * 2. Frontend uploads image directly to S3 using the pre-signed URL
+     * 3. Frontend calls this endpoint with the objectKey
+     * 
+     * BENEFITS:
+     * - Avoids CloudFront request size limits
+     * - Avoids CORS issues with multipart uploads
+     * - JSON request (no multipart) works perfectly through CloudFront
+     * 
+     * POST /api/complaints/citizen/{citizenId}/with-s3-image
+     * Content-Type: application/json
+     * 
+     * Request Body:
+     * {
+     *   "title": "...",
+     *   "description": "...",
+     *   "location": "...",
+     *   "latitude": 12.34,
+     *   "longitude": 56.78,
+     *   "imageS3Key": "complaints/2026/02/pending-abc123.jpg",
+     *   "imageMimeType": "image/jpeg"
+     * }
+     */
+    @PostMapping("/citizen/{citizenId}/with-s3-image")
+    public ResponseEntity<ComplaintResponseDTO> createComplaintWithS3Image(
+            @PathVariable Long citizenId,
+            @RequestBody Map<String, Object> requestBody) {
+        
+        // Extract fields from request body
+        String title = (String) requestBody.get("title");
+        String description = (String) requestBody.get("description");
+        String location = (String) requestBody.get("location");
+        Double latitude = requestBody.get("latitude") != null ? 
+            Double.parseDouble(requestBody.get("latitude").toString()) : null;
+        Double longitude = requestBody.get("longitude") != null ? 
+            Double.parseDouble(requestBody.get("longitude").toString()) : null;
+        String imageS3Key = (String) requestBody.get("imageS3Key");
+        String imageMimeType = (String) requestBody.get("imageMimeType");
+        
+        // Validate required fields
+        // Note: location can be empty if lat/long are provided (pinned on map)
+        if (title == null || title.isBlank() || 
+            description == null || description.isBlank() ||
+            latitude == null || longitude == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        // Use coordinates as location fallback if location text is empty
+        if (location == null || location.isBlank()) {
+            location = String.format("%.6f, %.6f", latitude, longitude);
+        }
+        
+        // Build complaint
+        Complaint complaint = new Complaint();
+        complaint.setTitle(title);
+        complaint.setDescription(description);
+        complaint.setLocation(location);
+        complaint.setLatitude(latitude);
+        complaint.setLongitude(longitude);
+        
+        // If S3 key provided, set it directly (image already uploaded to S3)
+        if (imageS3Key != null && !imageS3Key.isBlank()) {
+            complaint.setImageS3Key(imageS3Key);
+            complaint.setImageMimeType(imageMimeType != null ? imageMimeType : "image/jpeg");
+        }
+        
+        // Create complaint (AI analysis will download from S3 if image present)
+        ComplaintResponseDTO created = complaintService.createComplaintWithS3Key(
+            complaint, citizenId
+        );
+        
+        return new ResponseEntity<>(created, HttpStatus.CREATED);
+    }
+
+    /**
      * Upload/attach image to an EXISTING complaint.
      * Use this when citizen wants to add evidence after initial filing.
      * 

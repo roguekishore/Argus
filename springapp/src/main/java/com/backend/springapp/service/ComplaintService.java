@@ -309,6 +309,134 @@ public class ComplaintService {
 
         return buildResponseDTO(finalComplaint, category.getName(), departmentName);
     }
+
+    /**
+     * Create a complaint with a pre-uploaded S3 image key.
+     * 
+     * USE FOR DIRECT S3 UPLOADS:
+     * This method is used when the frontend uploads images directly to S3
+     * using pre-signed URLs. The S3 key is already set on the complaint.
+     * 
+     * FLOW:
+     * 1. Frontend uploads image directly to S3
+     * 2. Frontend calls API with S3 key already set on complaint
+     * 3. This method downloads from S3 for AI analysis, then saves
+     * 
+     * @param complaint The complaint with imageS3Key already set
+     * @param citizenId The citizen filing the complaint
+     * @return ComplaintResponseDTO with AI analysis
+     */
+    public ComplaintResponseDTO createComplaintWithS3Key(Complaint complaint, Long citizenId) {
+        if (!userRepository.existsById(citizenId)) {
+            throw new ResourceNotFoundException("Citizen not found with id: " + citizenId);
+        }
+        
+        // Set basic fields
+        complaint.setCitizenId(citizenId);
+        complaint.setStatus(ComplaintStatus.FILED);
+        complaint.setStaffId(null);
+        complaint.setStartTime(null);
+        complaint.setUpdatedTime(null);
+        complaint.setResolvedTime(null);
+        complaint.setClosedTime(null);
+        complaint.setCitizenSatisfaction(null);
+
+        // Save first to get ID
+        Complaint saved = complaintRepository.save(complaint);
+
+        // Download image from S3 for AI analysis (if image was uploaded)
+        byte[] imageBytes = null;
+        String imageMimeType = complaint.getImageMimeType();
+        if (complaint.getImageS3Key() != null && !complaint.getImageS3Key().isBlank()) {
+            try {
+                imageBytes = s3StorageService.downloadImage(complaint.getImageS3Key());
+                log.info("📷 Downloaded image from S3 for AI analysis: {} ({} bytes)", 
+                         complaint.getImageS3Key(), imageBytes != null ? imageBytes.length : 0);
+            } catch (Exception e) {
+                log.error("❌ Failed to download image from S3 (non-blocking): {}", e.getMessage());
+                // Continue without image analysis
+            }
+        }
+
+        // AI analysis (multimodal if image available)
+        AIDecision aiDecision;
+        if (imageBytes != null && imageBytes.length > 0) {
+            aiDecision = aiService.analyzeComplaint(saved, imageBytes, imageMimeType);
+        } else {
+            aiDecision = aiService.analyzeComplaint(saved);
+        }
+        
+        // Apply AI decision
+        Category category = categoryRepository.findByName(aiDecision.categoryName)
+            .orElseGet(() -> categoryRepository.findByName("OTHER").orElseThrow());
+
+        SLA slaConfig = slaRepository.findByCategory(category)
+            .orElseThrow(() -> new ResourceNotFoundException("SLA not found for category: " + category.getName()));
+
+        saved.setCategoryId(category.getId());
+        saved.setPriority(Priority.valueOf(aiDecision.priority));
+        saved.setSlaDaysAssigned(aiDecision.slaDays);
+        saved.setSlaDeadline(LocalDateTime.now().plusDays(aiDecision.slaDays));
+        saved.setAiReasoning(aiDecision.getFullReasoning());  // Includes image findings
+        saved.setAiConfidence(aiDecision.confidence);
+
+        // Check AI confidence for automatic vs manual routing
+        String departmentName;
+        Long assignedDeptId = null;
+        if (aiDecision.confidence < AI_CONFIDENCE_THRESHOLD) {
+            // Low confidence: leave department unassigned for manual routing by admin
+            saved.setDepartmentId(null);
+            saved.setNeedsManualRouting(true);
+            departmentName = "Pending Assignment";
+            log.warn("⚠️ Low AI confidence ({}) for complaint #{} - flagged for manual routing", 
+                     aiDecision.confidence, saved.getComplaintId());
+        } else {
+            // High confidence: auto-assign to AI-determined department
+            assignedDeptId = slaConfig.getDepartment().getId();
+            saved.setDepartmentId(assignedDeptId);
+            saved.setNeedsManualRouting(false);
+            departmentName = slaConfig.getDepartment().getName();
+        }
+
+        // Cache image analysis results if available
+        if (aiDecision.hasImageFindings()) {
+            saved.setImageAnalysis(aiDecision.imageFindings);
+            saved.setImageAnalyzedAt(LocalDateTime.now());
+        }
+
+        Complaint finalComplaint = complaintRepository.save(saved);
+        String complaintTitle = finalComplaint.getTitle() != null ? finalComplaint.getTitle() : "Complaint #" + finalComplaint.getComplaintId();
+
+        // AUDIT: Record complaint creation
+        boolean hasImage = complaint.getImageS3Key() != null && !complaint.getImageS3Key().isBlank();
+        auditService.recordComplaintStateChange(
+            finalComplaint.getComplaintId(),
+            null,
+            ComplaintStatus.FILED.name(),
+            AuditActorContext.forUser(citizenId),
+            "Complaint filed by citizen" + (hasImage ? " (with image evidence via direct S3 upload)" : "")
+        );
+        
+        String auditReason = saved.getNeedsManualRouting() 
+            ? "Low AI confidence (" + aiDecision.confidence + ") - pending manual routing"
+            : "AI-assigned department: " + departmentName;
+        auditService.recordDepartmentAssignment(
+            finalComplaint.getComplaintId(),
+            null,
+            saved.getDepartmentId(),
+            AuditActorContext.system(),
+            auditReason
+        );
+
+        // NOTIFY: Department head or Super Admin based on routing
+        if (saved.getNeedsManualRouting()) {
+            notifySuperAdminsForManualRouting(finalComplaint.getComplaintId(), complaintTitle, aiDecision.confidence);
+        } else if (assignedDeptId != null) {
+            notifyDeptHeadOfAssignment(assignedDeptId, finalComplaint.getComplaintId(), complaintTitle, departmentName);
+        }
+
+        return buildResponseDTO(finalComplaint, category.getName(), departmentName);
+    }
     
     /**
      * Attach image to an EXISTING complaint.

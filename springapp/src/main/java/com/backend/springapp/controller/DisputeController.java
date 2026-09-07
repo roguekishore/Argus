@@ -21,6 +21,7 @@ import com.backend.springapp.model.CitizenSignoff;
 import com.backend.springapp.model.User;
 import com.backend.springapp.repository.UserRepository;
 import com.backend.springapp.security.UserContext;
+import com.backend.springapp.security.UserContextHolder;
 import com.backend.springapp.security.UserRole;
 import com.backend.springapp.service.DisputeService;
 import com.backend.springapp.service.S3StorageService;
@@ -262,8 +263,80 @@ public class DisputeController {
         
         return ResponseEntity.ok(disputeDTOs);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // POST /api/complaints/{id}/dispute-s3 - Submit Dispute with S3 Key (CITIZEN)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Submit a dispute with pre-uploaded S3 image key.
+     * 
+     * USE THIS FOR DIRECT S3 UPLOADS:
+     * Frontend uploads counter-proof image directly to S3, then calls this
+     * endpoint with the S3 key.
+     * 
+     * POST /api/complaints/{id}/dispute-s3
+     * Content-Type: application/json
+     * 
+     * Request Body:
+     * {
+     *   "disputeReason": "The pothole is still there",
+     *   "feedback": "I can see it from my window",
+     *   "counterProofImageS3Key": "complaints/2026/02/pending-abc123.jpg",
+     *   "imageMimeType": "image/jpeg"
+     * }
+     * 
+     * @param complaintId The complaint to dispute
+     * @return DisputeResponse confirming submission
+     */
+    @PostMapping("/complaints/{id}/dispute-s3")
+    public ResponseEntity<DisputeResponse> submitDisputeWithS3Key(
+            @PathVariable("id") Long complaintId,
+            @RequestBody java.util.Map<String, String> requestBody) {
+        
+        // Get user context from JWT (set by JwtAuthenticationFilter)
+        UserContext userContext = getCurrentUserContext();
+        
+        log.info("Dispute submission (S3): complaint={}, user={}", complaintId, userContext.userId());
+        
+        String disputeReason = requestBody.get("disputeReason");
+        String feedback = requestBody.get("feedback");
+        String counterProofImageS3Key = requestBody.get("counterProofImageS3Key");
+        
+        // Validate required fields
+        if (disputeReason == null || disputeReason.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        // Create request with S3 key
+        DisputeRequest request = new DisputeRequest(
+            counterProofImageS3Key, // counterProofImageS3Key (already uploaded or null)
+            disputeReason,          // disputeReason
+            feedback                // feedback
+        );
+        
+        DisputeResponse response = disputeService.submitDispute(
+            complaintId, 
+            request, 
+            userContext
+        );
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
     
     // ==================== HELPER METHODS ====================
+    
+    /**
+     * Get current user context from JWT.
+     * Used by JWT-compatible endpoints (S3 direct upload).
+     */
+    private UserContext getCurrentUserContext() {
+        UserContext context = UserContextHolder.getContext();
+        if (context == null) {
+            throw new SecurityException("User not authenticated");
+        }
+        return context;
+    }
     
     /**
      * Resolve UserContext from request headers or database.

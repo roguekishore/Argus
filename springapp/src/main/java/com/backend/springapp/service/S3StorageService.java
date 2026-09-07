@@ -1,5 +1,6 @@
 package com.backend.springapp.service;
 
+import com.backend.springapp.dto.response.PresignedUploadResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -13,9 +14,10 @@ import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import jakarta.annotation.PostConstruct;
-import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -68,7 +70,7 @@ public class S3StorageService {
                     .credentialsProvider(credentials)
                     .httpClient(UrlConnectionHttpClient.create())
                     .build();
-                
+
                 s3Presigner = S3Presigner.builder()
                     .region(Region.of(region))
                     .credentialsProvider(credentials)
@@ -312,5 +314,78 @@ public class S3StorageService {
      */
     public String getBucketName() {
         return bucketName;
+    }
+
+    // ==================== PRE-SIGNED UPLOAD URLs ====================
+
+    /**
+     * Generate a pre-signed PUT URL for direct browser-to-S3 upload.
+     * 
+     * This enables the frontend to upload files directly to S3, bypassing
+     * CloudFront and EC2 entirely for the actual file transfer.
+     * 
+     * ARCHITECTURE BENEFITS:
+     * - Avoids CloudFront request size limits (typically 50MB)
+     * - Avoids CORS issues with multipart uploads through CloudFront
+     * - Reduces EC2 load (file bytes never touch the server)
+     * - AWS credentials remain server-side only
+     * 
+     * @param filename Original filename (used for extension detection)
+     * @param contentType MIME type of the file (e.g., "image/jpeg")
+     * @return PresignedUploadResponse with URL and object key, or null if not configured
+     */
+    public PresignedUploadResponse generatePresignedUploadUrl(String filename, String contentType) {
+        if (!isConfigured()) {
+            log.warn("S3 not configured - cannot generate presigned upload URL");
+            return null;
+        }
+
+        if (contentType == null || contentType.isBlank()) {
+            log.warn("Content type is required for presigned upload URL");
+            return null;
+        }
+
+        try {
+            // Generate object key (without complaint ID since it doesn't exist yet)
+            String objectKey = generateObjectKey(contentType, null);
+
+            // Build the PUT object request
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(objectKey)
+                .contentType(contentType)
+                .build();
+
+            // Generate presigned request (valid for 10 minutes)
+            int expirationSeconds = 600;
+            PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofSeconds(expirationSeconds))
+                .putObjectRequest(putObjectRequest)
+                .build();
+
+            PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(presignRequest);
+            String uploadUrl = presignedRequest.url().toString();
+
+            log.info("✅ Generated presigned upload URL for: {} -> {} (expires in {} sec)", 
+                     filename, objectKey, expirationSeconds);
+
+            return PresignedUploadResponse.builder()
+                .uploadUrl(uploadUrl)
+                .objectKey(objectKey)
+                .expiresInSeconds(expirationSeconds)
+                .contentType(contentType)
+                .build();
+
+        } catch (Exception e) {
+            log.error("❌ Failed to generate presigned upload URL: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get the S3 region for CORS configuration reference.
+     */
+    public String getRegion() {
+        return region;
     }
 }

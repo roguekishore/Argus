@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -167,5 +168,63 @@ public class ResolutionProofController {
     @GetMapping("/{complaintId}/has-proof")
     public ResponseEntity<Boolean> hasProof(@PathVariable Long complaintId) {
         return ResponseEntity.ok(resolutionProofService.hasProof(complaintId));
+    }
+
+    /**
+     * Submit resolution proof with pre-uploaded S3 image key.
+     * 
+     * USE THIS FOR DIRECT S3 UPLOADS:
+     * This endpoint is used when the frontend uploads images directly to S3
+     * using pre-signed URLs, then submits the proof with the S3 key.
+     * 
+     * POST /api/complaints/{complaintId}/resolution-proof-s3
+     * Content-Type: application/json
+     * 
+     * Request Body:
+     * {
+     *   "proofImageS3Key": "complaints/2026/02/pending-abc123.jpg",
+     *   "imageMimeType": "image/jpeg",
+     *   "remarks": "Fixed the pothole and repaved the road"
+     * }
+     * 
+     * WHY THIS EXISTS:
+     * - Avoids CloudFront request size limits on multipart uploads
+     * - Uses JSON request which works perfectly through CloudFront
+     * - Image is already in S3 from direct upload
+     */
+    @PostMapping("/{complaintId}/resolution-proof-s3")
+    public ResponseEntity<ResolutionProofResponse> submitProofWithS3Key(
+            @PathVariable Long complaintId,
+            @RequestBody java.util.Map<String, String> requestBody) {
+        
+        UserContext userContext = getCurrentUserContext();
+        log.info("Resolution proof submission (S3): complaint={}, user={}", complaintId, userContext.userId());
+        
+        String proofImageS3Key = requestBody.get("proofImageS3Key");
+        String imageMimeType = requestBody.get("imageMimeType");
+        String remarks = requestBody.get("remarks");
+        
+        // Validate required fields
+        if (proofImageS3Key == null || proofImageS3Key.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (remarks == null || remarks.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        // Create request with S3 key
+        ResolutionProofRequest request = new ResolutionProofRequest(
+            proofImageS3Key,  // proofImageS3Key (already uploaded)
+            null,             // latitude (optional)
+            null,             // longitude (optional)
+            null,             // capturedAt (will default to now)
+            remarks           // remarks/description
+        );
+        
+        ResolutionProofResponse response = resolutionProofService.submitProof(
+            complaintId, request, userContext
+        );
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
