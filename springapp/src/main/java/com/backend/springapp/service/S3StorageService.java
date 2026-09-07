@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
@@ -65,6 +66,7 @@ public class S3StorageService {
                 s3Client = S3Client.builder()
                     .region(Region.of(region))
                     .credentialsProvider(credentials)
+                    .httpClient(UrlConnectionHttpClient.create())
                     .build();
                 
                 s3Presigner = S3Presigner.builder()
