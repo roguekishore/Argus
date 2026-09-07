@@ -4,48 +4,64 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    /* Core palette — warm white light theme */
+    --background: 40 20% 98%;
+    --foreground: 224 30% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 224 30% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --popover-foreground: 224 30% 8%;
+    --primary: 224 30% 8%;
+    --primary-foreground: 40 20% 98%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 30% 8%;
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 95%;
+    --accent-foreground: 224 30% 8%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --radius: 0.5rem;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 30% 8%;
+    --radius: 0.75rem;
+    --font-display: 'Sora', sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+
+    /* Brand accent colours */
+    --emerald: 158 64% 42%;
+    --amber: 38 92% 50%;
+    --violet: 258 90% 66%;
+    --blue: 217 91% 60%;
+
+    /* Glow/noise helpers */
+    --glow-emerald: rgba(52,211,153,0.18);
+    --glow-violet: rgba(139,92,246,0.14);
   }
 
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 224 28% 7%;
+    --foreground: 210 20% 96%;
+    --card: 224 25% 9%;
+    --card-foreground: 210 20% 96%;
+    --popover: 224 25% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 210 20% 96%;
+    --primary-foreground: 224 28% 7%;
+    --secondary: 223 20% 13%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 223 20% 13%;
+    --muted-foreground: 215 14% 58%;
+    --accent: 223 20% 15%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 62.8% 40%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
+    --border: 223 18% 16%;
+    --input: 223 18% 16%;
+    --ring: 215 14% 70%;
+
+    --glow-emerald: rgba(52,211,153,0.12);
+    --glow-violet: rgba(139,92,246,0.10);
   }
 }
 
@@ -58,20 +74,126 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-body);
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
   }
 }
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ─── Landing page animations ─────────────────────────────────────────── */
+@keyframes argus-ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+@keyframes argus-bar {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes argus-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes argus-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes argus-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes argus-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes argus-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes argus-gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes argus-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Ticker ───────────────────────────────────────────────────────────── */
+.argus-ticker-pause:hover .argus-ticker-track {
+  animation-play-state: paused;
+}
+
+/* ─── Feature row arrow ─────────────────────────────────────────────────── */
+.argus-feature-row:hover .argus-feature-arrow {
+  transform: translateX(5px);
+}
+
+/* ─── Card hover lift ───────────────────────────────────────────────────── */
+.argus-card-hover {
+  transition: transform 0.25s cubic-bezier(0.16,1,0.3,1),
+              box-shadow 0.25s cubic-bezier(0.16,1,0.3,1),
+              border-color 0.2s ease;
+}
+.argus-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.1);
+}
+.dark .argus-card-hover:hover {
+  box-shadow: 0 12px 40px -8px rgba(0,0,0,0.5);
+}
+
+/* ─── Noise texture overlay ─────────────────────────────────────────────── */
+.argus-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ─── Gradient text ─────────────────────────────────────────────────────── */
+.argus-gradient-text {
+  background: linear-gradient(135deg, hsl(158,64%,42%), hsl(217,91%,60%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.dark .argus-gradient-text {
+  background: linear-gradient(135deg, hsl(158,64%,52%), hsl(217,91%,70%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Glow border ────────────────────────────────────────────────────────── */
+.argus-glow-emerald {
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.25), 0 4px 24px -4px rgba(52,211,153,0.15);
+}
+.dark .argus-glow-emerald {
+  box-shadow: 0 0 0 1px rgba(52,211,153,0.2), 0 4px 32px -4px rgba(52,211,153,0.2);
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
+
+/* ─── Selection ──────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(52,211,153,0.25);
+  color: inherit;
 }
