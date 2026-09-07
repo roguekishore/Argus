@@ -149,16 +149,13 @@ public class DisputeController {
     @PostMapping("/complaints/{id}/dispute/{signoffId}/approve")
     public ResponseEntity<DisputeResponse> approveDispute(
             @PathVariable("id") Long complaintId,
-            @PathVariable("signoffId") Long signoffId,
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @PathVariable("signoffId") Long signoffId) {
+        
+        // Get user context from JWT (set by JwtAuthenticationFilter)
+        UserContext userContext = getCurrentUserContext();
         
         log.info("Dispute approval request: complaint={}, signoff={}, user={}", 
-            complaintId, signoffId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+            complaintId, signoffId, userContext.userId());
         
         DisputeResponse response = disputeService.approveDispute(
             complaintId, 
@@ -193,16 +190,13 @@ public class DisputeController {
     public ResponseEntity<DisputeResponse> rejectDispute(
             @PathVariable("id") Long complaintId,
             @PathVariable("signoffId") Long signoffId,
-            @RequestParam("reason") String rejectionReason,
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+            @RequestParam("reason") String rejectionReason) {
+        
+        // Get user context from JWT (set by JwtAuthenticationFilter)
+        UserContext userContext = getCurrentUserContext();
         
         log.info("Dispute rejection request: complaint={}, signoff={}, user={}", 
-            complaintId, signoffId, userId);
-        
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+            complaintId, signoffId, userContext.userId());
         
         DisputeResponse response = disputeService.rejectDispute(
             complaintId, 
@@ -232,15 +226,12 @@ public class DisputeController {
      * @return List of pending dispute DTOs with presigned URLs for counter-proof images
      */
     @GetMapping("/disputes/pending")
-    public ResponseEntity<List<PendingDisputeDTO>> getPendingDisputes(
-            @RequestHeader(value = "X-User-Id", required = true) Long userId,
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Type", required = false) UserType userType,
-            @RequestHeader(value = "X-Department-Id", required = false) Long departmentId) {
+    public ResponseEntity<List<PendingDisputeDTO>> getPendingDisputes() {
         
-        log.info("Pending disputes request: user={}", userId);
+        // Get user context from JWT (set by JwtAuthenticationFilter)
+        UserContext userContext = getCurrentUserContext();
         
-        UserContext userContext = resolveUserContext(userId, userRole, userType, departmentId);
+        log.info("Pending disputes request: user={}", userContext.userId());
         
         List<CitizenSignoff> disputes = disputeService.getPendingDisputesForDepartment(
             userContext.departmentId(),
