@@ -51,8 +51,8 @@ public class WhatsAppAgentService {
     @Value("${gemini.api.key:}")
     private String geminiApiKey;
 
-    private static final String GEMINI_URL = 
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private static final String GEMINI_URL =
+        "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent";
 
     // Intent patterns for phase transitions
     private static final Pattern STATUS_PATTERN = Pattern.compile(

@@ -29,10 +29,10 @@ public class AIService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private static final String GEMINI_URL = "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent";
     
     // Gemini 2.0 Flash supports multimodal (image + text) analysis
-    private static final String GEMINI_MULTIMODAL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private static final String GEMINI_MULTIMODAL_URL = "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent";
     
     // Minimum confidence for complaint to be considered valid/clear
     private static final double VALIDATION_CONFIDENCE_THRESHOLD = 0.4;

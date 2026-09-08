@@ -35,7 +35,7 @@ public class DuplicateDetectionService {
     
     private static final double DEFAULT_RADIUS_METERS = 500.0; // 500m radius
     private static final double SIMILARITY_THRESHOLD = 0.6;
-    private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    private static final String GEMINI_URL = "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent";
     
     @Value("${gemini.api.key}")
     private String apiKey;
