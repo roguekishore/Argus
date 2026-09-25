@@ -1,0 +1,127 @@
+# Build and Push  (rendered per repo by ../render-workflows.py -- edit the template, not the copies)
+#
+# Actions -> Build and Push -> Run workflow
+#   1. "Use workflow from": pick the branch to build
+#   2. "tag": type the image tag you want (e.g. v2, graal, fix-login)
+# It builds that branch, smoke-tests it (native apps), and pushes EXACTLY <image>:<tag>. Nothing else is pushed.
+# It does not deploy and holds no AWS credentials. Deploying is done on the box / from the command center.
+# The run summary prints each image's digest, so you can deploy an exact build.
+#
+# Nothing here runs on ordinary commits or pushes.
+
+name: Build and Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to push (e.g. graal, v2, fix-login). Only this tag is pushed.
+        type: string
+        required: true
+      skip_smoke:
+        description: Skip the native-image smoke test (escape hatch if it false-fails)
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # linux/arm64 images (the box is Graviton). Native-image compiles under QEMU emulation
+    # fail or take hours, so keep this on an arm runner.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: argus
+            image: roguekishore/argus
+            context: ./springapp
+            file: ./springapp/Dockerfile.native
+            native: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Validate tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+            echo "::error::'$TAG' is not a valid Docker tag (letters, digits, _ . - ; max 128; cannot start with . or -)"
+            exit 1
+          fi
+
+      # Build once into the local daemon so we can smoke-test exactly what will be pushed.
+      - name: Build (local, for smoke test)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/arm64
+          load: true
+          provenance: false
+          tags: smoke/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+      # Native-image failures (missing reflection config, wrong JDK for Boot 4, ...) only show
+      # up at runtime. No DB is reachable here, so a datasource/JDBC failure is EXPECTED and fine;
+      # what must NOT appear are native-image runtime errors, and the app must reach Spring's banner.
+      - name: Smoke test (native image must start)
+        if: ${{ matrix.native && !inputs.skip_smoke }}
+        run: |
+          set +e
+          timeout 90 docker run --rm --entrypoint ./app "smoke/${{ matrix.service }}:ci" -Xmx128m > smoke.log 2>&1
+          echo "container exit code: $?"
+          BAD='NativeImageRequirements|UnsupportedFeature|UnknownClass|MissingReflectionRegistration'
+          if grep -qE "$BAD" smoke.log; then
+            echo "::error::native-image runtime error detected"
+            grep -E "$BAD" smoke.log | head -20
+            exit 1
+          fi
+          if ! grep -qE 'Spring Boot|Starting [A-Za-z0-9_.]+ using' smoke.log; then
+            echo "::error::application never reached Spring's startup banner"
+            tail -40 smoke.log
+            exit 1
+          fi
+          echo "smoke test passed"
+
+      - name: Push
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ matrix.image }}:${{ inputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAG: ${{ inputs.tag }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          {
+            echo "### ${{ matrix.service }}"
+            echo "- digest: \`$DIGEST\`"
+            echo "- pull exactly this build: \`docker pull $IMAGE@$DIGEST\`"
+            echo "- pushed: \`$IMAGE:$TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
