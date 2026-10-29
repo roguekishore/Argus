@@ -1,0 +1,182 @@
+/*
+ * Landing page only. Black, white and one magenta. Scoped to .landing so the dashboards keep the app theme.
+ * The film panel is always black (#0c0c0e), in both themes.
+ */
+.landing {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 38%;
+    --border: 0 0% 88%;
+    --ring: 325 100% 62%;
+    /* magenta as text or a thin line on the page background */
+    --lp-magenta: 325 80% 42%;
+    /* magenta as a solid fill (matches the film) */
+    --lp-magenta-fill: 325 100% 62%;
+
+    font-family: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
+.dark .landing {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 6%;
+    --muted: 0 0% 9%;
+    --muted-foreground: 0 0% 62%;
+    --border: 0 0% 16%;
+    --lp-magenta: 325 100% 70%;
+}
+
+.lp-mono {
+    font-family: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.lp-h1 {
+    font-weight: 300;
+    font-size: clamp(2.5rem, 6.2vw, 4.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+}
+
+/* Narrow column on desktop, so the heading wraps over a few lines */
+.lp-h1--hero {
+    font-size: clamp(2.25rem, 3.4vw, 3.25rem);
+}
+
+/*
+ * Hero stage. Phones and tablets: full width. Desktop: as large as the screen allows, limited by
+ * the width left beside the copy column and by the height left under the nav
+ * (nav 3.5rem + hero padding 4rem + chapter rail ~5.5rem = 13rem), at the film's 17:10 shape.
+ */
+.lp-stage {
+    width: 100%;
+}
+
+@media (min-width: 1024px) {
+    .lp-stage {
+        /* 100vw - copy column (25rem) - gap (3rem) - page padding (6rem) */
+        width: min(calc(100vw - 34rem), calc((100vh - 13rem) * 1.7));
+        width: min(calc(100vw - 34rem), calc((100svh - 13rem) * 1.7));
+    }
+}
+
+.lp-h2 {
+    font-weight: 300;
+    font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────────────── */
+.lp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding: 0 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.lp-btn:focus-visible {
+    outline: 2px solid hsl(var(--lp-magenta-fill));
+    outline-offset: 2px;
+}
+
+.lp-btn--sm {
+    height: 2.25rem;
+    padding: 0 1rem;
+    font-size: 0.8125rem;
+}
+
+.lp-btn--solid {
+    background: hsl(var(--foreground));
+    color: hsl(var(--background));
+}
+
+.lp-btn--solid:hover {
+    background: hsl(var(--lp-magenta-fill));
+    color: #0c0c0e;
+}
+
+.lp-btn--outline {
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+}
+
+.lp-btn--outline:hover {
+    border-color: hsl(var(--foreground));
+}
+
+.lp-btn--magenta {
+    background: hsl(var(--lp-magenta-fill));
+    color: #0c0c0e;
+}
+
+.lp-btn--magenta:hover {
+    background: #f4f4f5;
+}
+
+.lp-btn--ghost-light {
+    border-color: rgba(244, 244, 245, 0.28);
+    color: #f4f4f5;
+}
+
+.lp-btn--ghost-light:hover {
+    border-color: #f4f4f5;
+}
+
+/* ─── Links ───────────────────────────────────────────────────────────── */
+.lp-link {
+    color: hsl(var(--muted-foreground));
+    transition: color 0.15s ease;
+}
+
+.lp-link:hover {
+    color: hsl(var(--foreground));
+}
+
+/* ─── Chapter rail ────────────────────────────────────────────────────── */
+.lp-rail-item {
+    border-top: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    transition: color 0.3s ease, border-color 0.3s ease;
+}
+
+.lp-rail-item[data-active='true'] {
+    border-top-color: hsl(var(--lp-magenta-fill));
+    box-shadow: 0 -1px 0 hsl(var(--lp-magenta-fill));
+    color: hsl(var(--foreground));
+}
+
+/* ─── Reveal on scroll ────────────────────────────────────────────────── */
+.lp-reveal {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.lp-reveal[data-in='true'] {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lp-reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+}
