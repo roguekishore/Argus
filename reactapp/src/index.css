@@ -27,6 +27,7 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --default-ring-width: 3px;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
 
@@ -99,6 +100,9 @@
   input::placeholder,
   textarea::placeholder {
     color: var(--color-gray-400);
+  }
+  label {
+    display: inline-block;
   }
 }
 
