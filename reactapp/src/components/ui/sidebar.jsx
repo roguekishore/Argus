@@ -78,7 +78,7 @@ export const Sidebar = ({ children, className }) => {
   return (
     <aside
       className={cn(
-        "relative flex h-screen flex-col flex-shrink-0 border-r bg-background transition-all duration-300",
+        "relative flex h-screen flex-col shrink-0 border-r bg-background transition-all duration-300",
         isCollapsed ? "w-16" : "w-64",
         className
       )}
@@ -275,7 +275,7 @@ export const SidebarRail = ({ className }) => {
     <button
       onClick={toggleSidebar}
       className={cn(
-        "absolute -right-3 top-6 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-sm hover:bg-accent",
+        "absolute -right-3 top-6 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-xs hover:bg-accent",
         className
       )}
     >

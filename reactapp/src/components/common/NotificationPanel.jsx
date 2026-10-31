@@ -164,7 +164,7 @@ const NotificationItem = ({
 
       {/* Icon */}
       <div className={cn(
-        'flex-shrink-0 mt-0.5',
+        'shrink-0 mt-0.5',
         config.color
       )}>
         <IconComponent className="h-4 w-4" />
@@ -180,7 +180,7 @@ const NotificationItem = ({
           )}>
             {title}
           </p>
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+          <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
             {formatRelativeTime(createdAt)}
           </span>
         </div>

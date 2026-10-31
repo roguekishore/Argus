@@ -172,7 +172,7 @@ const AuditTimelineItem = ({ entry, isFirst = false, isLast = false }) => {
         {/* Line above (hidden for first item) */}
         <div 
           className={cn(
-            'w-0.5 flex-grow',
+            'w-0.5 grow',
             isFirst ? 'bg-transparent' : 'bg-border'
           )} 
         />
@@ -188,7 +188,7 @@ const AuditTimelineItem = ({ entry, isFirst = false, isLast = false }) => {
         {/* Line below (hidden for last item) */}
         <div 
           className={cn(
-            'w-0.5 flex-grow',
+            'w-0.5 grow',
             isLast ? 'bg-transparent' : 'bg-border'
           )} 
         />

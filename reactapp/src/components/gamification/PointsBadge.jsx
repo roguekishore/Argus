@@ -19,10 +19,10 @@ import gamificationService from '../../services/api/gamificationService';
 
 // Tier styling
 const TIER_STYLES = {
-  PLATINUM: { bg: 'bg-gradient-to-r from-purple-500 to-pink-500', text: 'text-white', border: 'border-purple-400' },
-  GOLD: { bg: 'bg-gradient-to-r from-yellow-400 to-orange-500', text: 'text-white', border: 'border-yellow-400' },
-  SILVER: { bg: 'bg-gradient-to-r from-gray-300 to-gray-400', text: 'text-gray-800', border: 'border-gray-400' },
-  BRONZE: { bg: 'bg-gradient-to-r from-orange-300 to-orange-400', text: 'text-white', border: 'border-orange-400' },
+  PLATINUM: { bg: 'bg-linear-to-r from-purple-500 to-pink-500', text: 'text-white', border: 'border-purple-400' },
+  GOLD: { bg: 'bg-linear-to-r from-yellow-400 to-orange-500', text: 'text-white', border: 'border-yellow-400' },
+  SILVER: { bg: 'bg-linear-to-r from-gray-300 to-gray-400', text: 'text-gray-800', border: 'border-gray-400' },
+  BRONZE: { bg: 'bg-linear-to-r from-orange-300 to-orange-400', text: 'text-white', border: 'border-orange-400' },
 };
 
 const PointsBadge = ({ citizenId, compact = false, showProgress = true }) => {

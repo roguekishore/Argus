@@ -1302,7 +1302,7 @@ const SuperAdminDashboard = () => {
                     <input
                       type="text"
                       placeholder="Search users, complaints, categories, SLA, departments..."
-                      className="flex-1 bg-transparent outline-none text-lg placeholder:text-muted-foreground"
+                      className="flex-1 bg-transparent outline-hidden text-lg placeholder:text-muted-foreground"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       autoFocus

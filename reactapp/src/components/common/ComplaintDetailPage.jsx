@@ -277,7 +277,7 @@ const ComplaintDetailPage = ({
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0">
-              <CardTitle className="text-lg sm:text-xl break-words">{complaint.title}</CardTitle>
+              <CardTitle className="text-lg sm:text-xl wrap-break-word">{complaint.title}</CardTitle>
               <CardDescription className="mt-1">
                 Filed on {formatDate(complaint.createdTime)}
               </CardDescription>

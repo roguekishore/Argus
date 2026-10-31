@@ -203,7 +203,7 @@ const DepartmentManagement = () => {
           <input
             type="text"
             placeholder="Search users by name, email, or phone..."
-            className="w-full pl-10 pr-10 py-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+            className="w-full pl-10 pr-10 py-2 border rounded-md bg-background focus:outline-hidden focus:ring-2 focus:ring-primary text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -221,7 +221,7 @@ const DepartmentManagement = () => {
         <select
           value={deptFilter}
           onChange={(e) => setDeptFilter(e.target.value)}
-          className="px-3 py-2 border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px]"
+          className="px-3 py-2 border rounded-md bg-background text-sm focus:outline-hidden focus:ring-2 focus:ring-primary min-w-[180px]"
         >
           <option value="all">All Departments</option>
           {departments

@@ -3,7 +3,7 @@ import { Button, Card, CardContent, Input, Avatar, AvatarFallback, ScrollArea, S
 import { ThemeToggle } from './theme-toggle';
 import { Send, RotateCcw, Building2, User, Bot } from 'lucide-react';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 const API_URL = `${API_BASE_URL}/chat`;
 
 function ChatBot() {
@@ -233,7 +233,7 @@ function ChatBot() {
 
         {/* Registration Form Modal */}
         {showRegistrationForm && (
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xs flex items-center justify-center z-50">
             <Card className="w-[90%] max-w-sm mx-4">
               <CardContent className="p-6">
                 <h3 className="font-semibold text-lg mb-4">Quick Registration</h3>
