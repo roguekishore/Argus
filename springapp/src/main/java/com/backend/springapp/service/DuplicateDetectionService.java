@@ -19,8 +19,8 @@ import com.backend.springapp.dto.response.DuplicateCheckResponseDTO.PotentialDup
 import com.backend.springapp.model.Complaint;
 import com.backend.springapp.repository.CategoryRepository;
 import com.backend.springapp.repository.ComplaintRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -47,7 +47,7 @@ public class DuplicateDetectionService {
     private CategoryRepository categoryRepository;
     
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
     
     /**
      * Check for potential duplicate complaints based on:

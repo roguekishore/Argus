@@ -4,8 +4,8 @@ import com.backend.springapp.service.ImageAnalysisService;
 import com.backend.springapp.whatsapp.model.ConversationPhase;
 import com.backend.springapp.whatsapp.model.ConversationSession;
 import com.backend.springapp.whatsapp.model.WhatsAppMessage;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,7 +45,7 @@ public class WhatsAppAgentService {
     private final SessionManager sessionManager;
     private final WhatsAppTools tools;
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final ImageAnalysisService imageAnalysisService;
 
     @Value("${gemini.api.key:}")
