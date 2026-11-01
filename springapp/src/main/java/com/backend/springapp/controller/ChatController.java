@@ -3,8 +3,8 @@ package com.backend.springapp.controller;
 import com.backend.springapp.whatsapp.model.ConversationSession;
 import com.backend.springapp.whatsapp.service.SessionManager;
 import com.backend.springapp.whatsapp.service.WhatsAppTools;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,7 +28,7 @@ public class ChatController {
     private final SessionManager sessionManager;
     private final WhatsAppTools tools;
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
     @Value("${gemini.api.key:}")
     private String geminiApiKey;

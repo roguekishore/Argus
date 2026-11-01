@@ -1,7 +1,7 @@
 package com.backend.springapp.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +48,7 @@ public class ImageAnalysisService {
     private S3StorageService s3StorageService;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /**
      * Analyze complaint image with text context.
@@ -318,7 +318,7 @@ public class ImageAnalysisService {
          */
         public String toJson() {
             try {
-                ObjectMapper mapper = new ObjectMapper();
+                JsonMapper mapper = JsonMapper.builder().build();
                 return mapper.writeValueAsString(this);
             } catch (Exception e) {
                 return "{\"error\": \"Serialization failed\"}";
@@ -333,7 +333,7 @@ public class ImageAnalysisService {
                 return null;
             }
             try {
-                ObjectMapper mapper = new ObjectMapper();
+                JsonMapper mapper = JsonMapper.builder().build();
                 return mapper.readValue(json, ImageAnalysisResult.class);
             } catch (Exception e) {
                 return null;

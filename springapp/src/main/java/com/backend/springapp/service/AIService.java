@@ -17,8 +17,8 @@ import com.backend.springapp.enums.Priority;
 import com.backend.springapp.model.Complaint;
 import com.backend.springapp.model.SLA;
 import com.backend.springapp.repository.SLARepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -41,7 +41,7 @@ public class AIService {
     private SLARepository slaRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     // ==================== PRE-SUBMISSION VALIDATION ====================
     
