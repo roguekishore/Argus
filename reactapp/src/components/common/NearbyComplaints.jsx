@@ -212,7 +212,7 @@ const NearbyComplaints = ({ userId, className }) => {
         {/* View Mode Toggle */}
         <div className="flex gap-2 mt-3">
           <Button
-            variant={viewMode === 'nearby' ? 'default' : 'outline'}
+            variant={viewMode === 'nearby' ? 'default' : 'outline-solid'}
             size="sm"
             onClick={() => setViewMode('nearby')}
             className="flex-1 sm:flex-none"
@@ -221,7 +221,7 @@ const NearbyComplaints = ({ userId, className }) => {
             Nearby
           </Button>
           <Button
-            variant={viewMode === 'trending' ? 'default' : 'outline'}
+            variant={viewMode === 'trending' ? 'default' : 'outline-solid'}
             size="sm"
             onClick={() => setViewMode('trending')}
             className="flex-1 sm:flex-none"
@@ -280,7 +280,7 @@ const NearbyComplaints = ({ userId, className }) => {
             {complaints.map((complaint) => (
               <div
                 key={complaint.complaintId}
-                className="p-3 sm:p-4 rounded-lg border bg-card hover:shadow-sm transition-shadow"
+                className="p-3 sm:p-4 rounded-lg border bg-card hover:shadow-xs transition-shadow"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                   <div className="flex-1 min-w-0">
@@ -336,7 +336,7 @@ const NearbyComplaints = ({ userId, className }) => {
                   </div>
 
                   {/* Upvote Button */}
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     {complaint.citizenId === userId ? (
                       <span className="text-xs text-muted-foreground px-2 py-1 rounded bg-muted">
                         Your complaint

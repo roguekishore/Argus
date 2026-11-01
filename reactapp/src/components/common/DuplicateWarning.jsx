@@ -78,7 +78,7 @@ const DuplicateWarning = ({
     <div className={cn("rounded-lg border border-yellow-300 dark:border-yellow-700 overflow-hidden", className)}>
       {/* Header */}
       <div className="bg-yellow-100 dark:bg-yellow-900/40 px-4 py-3 flex items-start gap-3">
-        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
         <div className="flex-1">
           <h4 className="font-medium text-yellow-800 dark:text-yellow-300">
             Potential Duplicate Complaints Found
@@ -156,7 +156,7 @@ const DuplicateWarning = ({
               </div>
 
               {/* Me Too Button */}
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 {upvotedIds.has(dup.complaintId) ? (
                   <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 text-sm font-medium">
                     <CheckCircle2 className="h-4 w-4" />

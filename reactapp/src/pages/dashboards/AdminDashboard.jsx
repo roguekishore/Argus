@@ -955,7 +955,7 @@ const AdminDashboard = () => {
             {/* Global Search Modal - Command Palette Style */}
             {searchOpen && (
               <div 
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] z-50"
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-start justify-center pt-[15vh] z-50"
                 onClick={(e) => { if (e.target === e.currentTarget) { setSearchOpen(false); setSearchQuery(""); setSearchFilter("all"); setSearchSort("relevance"); } }}
               >
                 <div className="w-full max-w-2xl mx-4 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
@@ -965,7 +965,7 @@ const AdminDashboard = () => {
                     <input
                       type="text"
                       placeholder="Search users, complaints, categories, SLAs..."
-                      className="flex-1 h-14 px-4 bg-transparent text-base placeholder:text-muted-foreground focus:outline-none"
+                      className="flex-1 h-14 px-4 bg-transparent text-base placeholder:text-muted-foreground focus:outline-hidden"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       autoFocus
@@ -1011,7 +1011,7 @@ const AdminDashboard = () => {
                       <select
                         value={searchSort}
                         onChange={(e) => setSearchSort(e.target.value)}
-                        className="text-xs bg-transparent border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        className="text-xs bg-transparent border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary cursor-pointer"
                       >
                         <option value="relevance">Relevance</option>
                         <option value="name">Name A-Z</option>

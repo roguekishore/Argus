@@ -122,7 +122,7 @@ const StaffAssignmentModal = ({
               placeholder="Search by name, email, or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full pl-10 pr-4 py-2 border rounded-md bg-background text-sm focus:outline-hidden focus:ring-2 focus:ring-primary"
               disabled={isLoading}
             />
           </div>

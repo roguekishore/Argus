@@ -157,7 +157,7 @@ const SidebarNav = ({ menuItems, activeItem, setActiveItem, user }) => {
 const DashboardHeader = ({ breadcrumbs, user, onLogout, onNavigateToComplaint }) => {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-2 sm:gap-4 border-b bg-background px-2 sm:px-4 md:px-6">
-      <SidebarTrigger className="flex-shrink-0" />
+      <SidebarTrigger className="shrink-0" />
       
       <Separator orientation="vertical" className="h-6 hidden sm:block" />
       
@@ -184,7 +184,7 @@ const DashboardHeader = ({ breadcrumbs, user, onLogout, onNavigateToComplaint })
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <NotificationBell onNavigateToComplaint={onNavigateToComplaint} />
         <ThemeToggle />
         <Separator orientation="vertical" className="h-6 hidden sm:block" />

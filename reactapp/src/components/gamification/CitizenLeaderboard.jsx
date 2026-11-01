@@ -17,10 +17,10 @@ import { maskPhoneNumber } from '../../lib/utils';
 
 // Tier colors and icons
 const TIER_CONFIG = {
-  PLATINUM: { color: 'bg-gradient-to-r from-purple-500 to-pink-500', icon: Trophy, text: 'text-purple-600' },
-  GOLD: { color: 'bg-gradient-to-r from-yellow-400 to-orange-500', icon: Medal, text: 'text-yellow-600' },
-  SILVER: { color: 'bg-gradient-to-r from-gray-300 to-gray-400', icon: Award, text: 'text-gray-600' },
-  BRONZE: { color: 'bg-gradient-to-r from-orange-300 to-orange-400', icon: Star, text: 'text-orange-600' },
+  PLATINUM: { color: 'bg-linear-to-r from-purple-500 to-pink-500', icon: Trophy, text: 'text-purple-600' },
+  GOLD: { color: 'bg-linear-to-r from-yellow-400 to-orange-500', icon: Medal, text: 'text-yellow-600' },
+  SILVER: { color: 'bg-linear-to-r from-gray-300 to-gray-400', icon: Award, text: 'text-gray-600' },
+  BRONZE: { color: 'bg-linear-to-r from-orange-300 to-orange-400', icon: Star, text: 'text-orange-600' },
 };
 
 const CitizenLeaderboard = ({ limit = 10, showTitle = true, compact = false }) => {

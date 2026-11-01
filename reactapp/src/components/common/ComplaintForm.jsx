@@ -413,7 +413,7 @@ const ComplaintForm = ({
           {errors.validation && errors.validation !== 'OK' && (
             <div className="p-4 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                 <div className="space-y-2">
                   <p className="font-medium text-amber-800 dark:text-amber-200">
                     Please be more specific
@@ -518,7 +518,7 @@ const ComplaintForm = ({
             <div className="flex items-center gap-2">
               <Button
                 type="button"
-                variant={showMap ? "default" : "outline"}
+                variant={showMap ? "default" : "outline-solid"}
                 size="sm"
                 onClick={() => setShowMap(!showMap)}
                 disabled={isLoading}

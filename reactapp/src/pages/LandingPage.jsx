@@ -33,7 +33,7 @@ function FilmPanel({ range, label, className = '', onFrame }) {
         <div
             role="img"
             aria-label={label}
-            className={`relative w-full overflow-hidden rounded-lg border border-border bg-[#0c0c0e] aspect-[17/10] ${className}`}
+            className={`relative w-full overflow-hidden rounded-lg border border-border bg-[#0c0c0e] aspect-17/10 ${className}`}
         >
             <ArgusFilm range={range} onFrame={onFrame} />
         </div>

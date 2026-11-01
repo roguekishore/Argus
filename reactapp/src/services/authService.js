@@ -189,7 +189,7 @@ const authService = {
     
     try {
       // Direct fetch to avoid circular dependency with apiClient
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}${AUTH_ENDPOINTS.REFRESH}`, {
+      const response = await fetch(`${import.meta.env.REACT_APP_API_URL || 'http://localhost:8080/api'}${AUTH_ENDPOINTS.REFRESH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),

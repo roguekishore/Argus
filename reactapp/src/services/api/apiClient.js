@@ -11,7 +11,7 @@
  */
 
 // Base API URL - should come from environment variable
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 /**
  * Storage keys for auth data
@@ -149,7 +149,7 @@ const handleResponse = async (response) => {
  * Log request in development
  */
 const logRequest = (method, url, body) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.MODE === 'development') {
     console.log(`[API] ${method} ${url}`, body || '');
   }
 };
@@ -158,7 +158,7 @@ const logRequest = (method, url, body) => {
  * Log response in development
  */
 const logResponse = (method, url, data) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.MODE === 'development') {
     console.log(`[API] ${method} ${url} Response:`, data);
   }
 };
@@ -167,7 +167,7 @@ const logResponse = (method, url, data) => {
  * Log error in development
  */
 const logError = (method, url, error) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.MODE === 'development') {
     console.error(`[API] ${method} ${url} Error:`, error);
   }
 };
